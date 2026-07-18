@@ -93,6 +93,14 @@ export class HeroScene {
       geometry.computeBoundingBox()
       const bb = geometry.boundingBox
       const width = bb.max.x - bb.min.x
+      // UVs keep the pre-translate coordinates; remember them so the hover
+      // photo can be cover-fitted onto the glyph later
+      const uvBounds = {
+        minX: bb.min.x,
+        minY: bb.min.y,
+        w: width,
+        h: bb.max.y - bb.min.y,
+      }
       // center each glyph on its own origin so the peel rotation reads
       // naturally, sharing one vertical center so the baseline stays true
       geometry.translate(-bb.min.x - width / 2, -capHeight / 2, -LETTER_DEPTH / 2)
@@ -109,7 +117,7 @@ export class HeroScene {
       const final = { x: cursor + width / 2, y: 0, z: 0 }
       cursor += width + TRACKING
 
-      this.letters.push({ mesh, material, final })
+      this.letters.push({ mesh, material, final, geometry, uvBounds })
       this.logo.add(mesh)
     }
 
@@ -127,12 +135,13 @@ export class HeroScene {
 
     this.#buildRawWord(font, capHeight)
     this.#buildWordLayers(font, capHeight)
-    this.#buildHoverArt(font, capHeight)
+    this.#buildHoverArt()
   }
 
-  #buildHoverArt(font, capHeight) {
-    // Hover reveal: each letter carries a hidden picture on its front face,
-    // clipped to the glyph. Hovering lights the letter and fades it in.
+  #buildHoverArt() {
+    // Hover reveal: each letter carries a hidden photo clone of its full 3D
+    // geometry — front, bevels, and extruded sides all wear the picture, so
+    // the reveal reads as a solid printed block, glowing from within.
     this.hoverState = this.letters.map(() => ({ t: 0, target: 0, flashUntil: 0 }))
     this.hoverIndex = -1
     this.pointerMoved = false
@@ -142,29 +151,28 @@ export class HeroScene {
       l.mesh.userData.letterIndex = i
       this.letterMeshes.push(l.mesh)
 
-      const shapes = font.generateShapes(WORD[i], 1)
-      const geometry = new THREE.ShapeGeometry(shapes, 8)
-      geometry.computeBoundingBox()
-      const bb = geometry.boundingBox
-      const w = bb.max.x - bb.min.x
-      const h = bb.max.y - bb.min.y
-
       const texture = this.#makeLetterArtTexture(i)
-      // cover-fit the square art inside the glyph's bounding box
+      // cover-fit the square art across the glyph's UV bounds (the sides
+      // sample the silhouette edge of the same image and streak it through
+      // the depth — the printed-acrylic look)
+      const { minX, minY, w, h } = l.uvBounds
       const s = Math.max(w, h)
       texture.repeat.set(1 / s, 1 / s)
-      texture.offset.set(
-        -(bb.min.x - (s - w) / 2) / s,
-        -(bb.min.y - (s - h) / 2) / s,
-      )
+      texture.offset.set(-(minX - (s - w) / 2) / s, -(minY - (s - h) / 2) / s)
 
-      geometry.translate(-bb.min.x - w / 2, -capHeight / 2, 0)
-
-      const material = new THREE.MeshBasicMaterial({
+      const material = new THREE.MeshStandardMaterial({
         map: texture,
+        emissive: 0xffffff,
+        emissiveMap: texture,
+        emissiveIntensity: 0,
+        metalness: 0.1,
+        roughness: 0.5,
         transparent: true,
         opacity: 0,
         depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
       })
 
       if (LETTER_IMAGES[i]) {
@@ -173,12 +181,13 @@ export class HeroScene {
           photo.repeat.copy(texture.repeat)
           photo.offset.copy(texture.offset)
           material.map = photo
+          material.emissiveMap = photo
           material.needsUpdate = true
         })
       }
-      const overlay = new THREE.Mesh(geometry, material)
-      // just proud of the front face (half depth + bevel + clearance)
-      overlay.position.z = LETTER_DEPTH / 2 + 0.02 + 0.006
+
+      const overlay = new THREE.Mesh(l.geometry, material) // shares geometry
+      overlay.renderOrder = 2
       overlay.userData.letterIndex = i
       l.mesh.add(overlay)
 
@@ -628,7 +637,30 @@ export class HeroScene {
     this.shadow.position.set(0, floorY + 0.01, 0)
     this.shadow.scale.set(1.6, 1, 1) // stretched under the wide word
 
-    this.scene.add(this.carpet, this.ring, this.shadow)
+    // a faint backlight at the rear of the stage, behind the word — just
+    // enough to lift the horizon out of pure black
+    const glowCanvas = document.createElement('canvas')
+    glowCanvas.width = 512
+    glowCanvas.height = 256
+    const gctx = glowCanvas.getContext('2d')
+    const glow = gctx.createRadialGradient(256, 200, 10, 256, 200, 250)
+    glow.addColorStop(0, 'rgba(235, 0, 40, 0.5)')
+    glow.addColorStop(0.55, 'rgba(235, 0, 40, 0.14)')
+    glow.addColorStop(1, 'rgba(235, 0, 40, 0)')
+    gctx.fillStyle = glow
+    gctx.fillRect(0, 0, 512, 256)
+    const glowTexture = new THREE.CanvasTexture(glowCanvas)
+    this.backGlowMat = new THREE.MeshBasicMaterial({
+      map: glowTexture,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+    this.backGlow = new THREE.Mesh(new THREE.PlaneGeometry(30, 12), this.backGlowMat)
+    this.backGlow.position.set(0, 2.2, -9)
+
+    this.scene.add(this.carpet, this.ring, this.shadow, this.backGlow)
   }
 
   #makeCarpetTexture() {
@@ -756,8 +788,10 @@ export class HeroScene {
       hs.t += (hs.target - hs.t) * (this.reduced ? 1 : 0.14)
       if (Math.abs(hs.target - hs.t) < 0.001) hs.t = hs.target
 
-      // sleek: the picture, a quiet red glow, and a slight tilt
+      // sleek: the picture wraps the whole block and glows from within,
+      // with a quiet red base glow and a slight tilt
       l.hoverMat.opacity = hs.t
+      l.hoverMat.emissiveIntensity = 0.38 * hs.t
       l.material.emissiveIntensity = 0.22 * hs.t
       l.mesh.rotation.y = 0.11 * hs.t
       l.mesh.rotation.x = -0.045 * hs.t
@@ -824,8 +858,9 @@ export class HeroScene {
     const idle = this.reduced ? 0 : state.idle
 
     const bob = Math.sin(t * 0.55)
-    this.rig.rotation.y = this.pointer.x * 0.16 * idle + Math.sin(t * 0.32) * 0.045 * idle
-    this.rig.rotation.x = -this.pointer.y * 0.1 * idle + Math.sin(t * 0.21) * 0.02 * idle
+    // the whole word turns slightly to face the cursor
+    this.rig.rotation.y = this.pointer.x * 0.22 * idle + Math.sin(t * 0.32) * 0.04 * idle
+    this.rig.rotation.x = -this.pointer.y * 0.12 * idle + Math.sin(t * 0.21) * 0.018 * idle
     this.rig.position.y = bob * 0.06 * this.rigScale * idle
 
     // the stage breathes with the float: ring glow pulses, the contact
@@ -836,8 +871,9 @@ export class HeroScene {
     this.shadowMat.opacity = stage * (0.5 - 0.14 * bob * idle)
     const shadowScale = 1 - 0.035 * bob * idle
     this.shadow.scale.set(1.6 * shadowScale, shadowScale, 1)
+    this.backGlowMat.opacity = stage * (this.reduced ? 0.11 : 0.1 + 0.025 * Math.sin(t * 0.45))
 
-    this.camera.position.set(this.pointer.x * 0.35 * idle, state.camY, state.camZ)
+    this.camera.position.set(this.pointer.x * 0.18 * idle, state.camY, state.camZ)
     this.camera.lookAt(0, -0.18, 0)
 
     this.keyLight.intensity = state.key
