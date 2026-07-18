@@ -5,19 +5,22 @@ a dark stage on which the wordmark assembles itself.
 
 ## The animation
 
-1. A thin **red axis line** draws across the darkness.
-2. Scattered **fragments** (white and TED-red bars) swarm in and gather along it.
-3. The fragments collapse into eight slots and the flat letters of **TEDxTIET**
-   land in their place — each letter entering from its own direction.
-4. The letters **extrude to 3D** as the red rim light flashes on.
+1. The raw text is already there: a faint **stencil of TEDxTIET** is written on
+   the stage from the very first frame.
+2. Flat sheets in the **exact shape of the title** — themed on EDUCATION,
+   TECHNOLOGY, DESIGN, and TIET — peel down onto the stencil one after
+   another, each letter curling flat left to right like a sticker being laid
+   down in reverse.
+3. The finished **white word is applied last**, absorbing the stencil.
+4. The word **extrudes to 3D** as the red rim light flashes on.
 5. The camera eases back and the logo settles into a floating, pointer-reactive
-   3D object sized to ~65% of the viewport width.
+   3D object sized to ~85% of the viewport width.
 
 The background is a custom-shader "stage floor": a disc of points carrying slow
 radial waves outward from the logo — an idea spreading. **Click anywhere on the
 stage to send your own ripple.** Moving the pointer tilts the logo and camera.
 
-**Hover any letter** (or tap it on touch) and it lights up, lifts toward you,
+**Hover any letter** (or tap it on touch) and it takes on a quiet red glow
 and reveals a picture inside the glyph — stage, audience, microphone, the x,
 circuitry, an idea, a book, the campus. The art is generated at runtime; to use
 real photos instead, fill the `LETTER_IMAGES` array at the top of

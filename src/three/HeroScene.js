@@ -657,12 +657,9 @@ export class HeroScene {
       hs.t += (hs.target - hs.t) * (this.reduced ? 1 : 0.14)
       if (Math.abs(hs.target - hs.t) < 0.001) hs.t = hs.target
 
+      // sleek: just the picture and a quiet red glow — no lift, no scale
       l.hoverMat.opacity = hs.t
-      l.material.emissiveIntensity = 0.5 * hs.t
-      const s = 1 + 0.055 * hs.t
-      l.mesh.scale.x = s
-      l.mesh.scale.y = s
-      l.mesh.position.z = l.final.z + 0.16 * hs.t
+      l.material.emissiveIntensity = 0.22 * hs.t
     })
   }
 
@@ -701,9 +698,9 @@ export class HeroScene {
     this.camera.updateProjectionMatrix()
     this.floor.uniforms.uPixelRatio.value = dpr
 
-    // The wordmark occupies 65% of the viewport width (85% on portrait
-    // screens where 65% would render it illegibly small).
-    const fraction = w / h < 0.9 ? 0.85 : 0.65
+    // The wordmark occupies 85% of the viewport width (92% on portrait
+    // screens where anything less renders it illegibly small).
+    const fraction = w / h < 0.9 ? 0.92 : 0.85
     const visibleWidth =
       2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * FINAL_CAM_Z * this.camera.aspect
     this.rigScale = (visibleWidth * fraction) / this.logoWidth
