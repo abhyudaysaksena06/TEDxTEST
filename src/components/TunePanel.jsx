@@ -16,6 +16,7 @@ const CONTROLS = [
   { key: 'ringGlow', label: 'Carpet edge glow', min: 0, max: 0.5, step: 0.01 },
   { key: 'hoverTilt', label: 'Hover tilt', min: 0, max: 0.3, step: 0.01 },
   { key: 'hoverGlow', label: 'Hover photo glow', min: 0, max: 1, step: 0.02 },
+  { key: 'stageBorder', label: 'Stage border glow', min: 0, max: 1, step: 0.02 },
 ]
 
 export default function TunePanel({ scene, onClose }) {

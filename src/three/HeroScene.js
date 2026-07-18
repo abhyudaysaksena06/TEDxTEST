@@ -50,6 +50,7 @@ export class HeroScene {
       ringGlow: 0.16, // carpet edge glow opacity
       hoverTilt: 0.11, // per-letter tilt on hover (rad)
       hoverGlow: 0.38, // photo emissive strength on hover
+      stageBorder: 0.45, // glow of the big deck's back-edge border
     }
 
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 }
@@ -606,6 +607,46 @@ export class HeroScene {
     // tracks the float.
     const floorY = -1.74
 
+    // The big deck: a half-oval platform wider than the screen, flat edge
+    // toward the audience, with the red carpet at its center and a glowing
+    // red border tracing its back curve.
+    const DECK_RX = 17
+    const DECK_RZ = 9
+    const DECK_FRONT_Z = 2.6
+    const deckShape = new THREE.Shape()
+    deckShape.absellipse(0, 0, DECK_RX, DECK_RZ, Math.PI, 0, true)
+    deckShape.closePath()
+    this.deckMat = new THREE.MeshBasicMaterial({
+      color: 0x161314,
+      transparent: true,
+      opacity: 0,
+    })
+    this.deck = new THREE.Mesh(new THREE.ShapeGeometry(deckShape, 48), this.deckMat)
+    this.deck.rotation.x = -Math.PI / 2
+    this.deck.position.set(0, floorY - 0.04, DECK_FRONT_Z)
+
+    const borderPoints = []
+    for (let i = 0; i <= 64; i++) {
+      const a = Math.PI - (i / 64) * Math.PI // back half, left edge to right edge
+      borderPoints.push(
+        new THREE.Vector3(
+          Math.cos(a) * DECK_RX,
+          floorY - 0.02,
+          DECK_FRONT_Z - Math.sin(a) * DECK_RZ,
+        ),
+      )
+    }
+    const borderCurve = new THREE.CatmullRomCurve3(borderPoints)
+    this.borderMat = new THREE.MeshBasicMaterial({
+      color: TED_RED,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    })
+    this.deckBorder = new THREE.Mesh(new THREE.TubeGeometry(borderCurve, 96, 0.06, 8), this.borderMat)
+
     const carpetTexture = this.#makeCarpetTexture()
     this.carpetMat = new THREE.MeshBasicMaterial({
       map: carpetTexture,
@@ -673,7 +714,7 @@ export class HeroScene {
     this.backGlow = new THREE.Mesh(new THREE.PlaneGeometry(36, 14), this.backGlowMat)
     this.backGlow.position.set(0, 2.4, -9)
 
-    this.scene.add(this.carpet, this.ring, this.shadow, this.backGlow)
+    this.scene.add(this.deck, this.deckBorder, this.carpet, this.ring, this.shadow, this.backGlow)
   }
 
   #makeCarpetTexture() {
@@ -887,6 +928,9 @@ export class HeroScene {
     const shadowScale = 1 - 0.035 * bob * idle
     this.shadow.scale.set(1.6 * shadowScale, shadowScale, 1)
     this.backGlowMat.opacity = stage * (this.reduced ? tuning.backGlow : tuning.backGlow + 0.035 * Math.sin(t * 0.45))
+    this.deckMat.opacity = stage
+    this.borderMat.opacity =
+      stage * (this.reduced ? tuning.stageBorder : tuning.stageBorder * (0.85 + 0.15 * Math.sin(t * 0.6)))
 
     this.camera.position.set(this.pointer.x * 0.18 * idle, state.camY, state.camZ)
     this.camera.lookAt(0, -0.18, 0)
