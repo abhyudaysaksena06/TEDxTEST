@@ -10,13 +10,6 @@ const FINAL_CAM_Z = 10.6
 const LETTER_DEPTH = 0.24
 const TRACKING = 0.09
 
-// Each letter enters from its own direction — the "different elements
-// coming together" brief. Order matches the letters of TEDxTIET.
-const ENTRY_VECTORS = [
-  [-3.2, 0.6], [0.4, 3.0], [3.0, 1.2], [0, -3.2],
-  [-2.6, -1.4], [0.6, 3.2], [2.8, -0.8], [3.4, 0.4],
-]
-
 // The genres that stack up to become the event — bottom to top.
 const GENRES = ['TECHNOLOGY', 'ENTERTAINMENT', 'DESIGN', 'SCIENCE', 'ART', 'CULTURE']
 
@@ -119,20 +112,43 @@ export class HeroScene {
     // shift finals so the word is centered
     for (const l of this.letters) l.final.x -= this.logoWidth / 2
 
-    // scatter start states (the timeline animates back to final)
+    // peel-on start states: each finished letter hovers over its raw
+    // outline, curled toward the camera like the unstuck end of a sticker,
+    // and is laid down flat left-to-right by the timeline
+    for (const l of this.letters) {
+      l.mesh.position.set(l.final.x, l.final.y + 0.22, 1.7)
+      l.mesh.rotation.set(-1.15, 0, 0)
+      l.mesh.scale.set(1, 1, 0.02) // lands flat, extrudes afterwards
+    }
+
+    this.#buildRawWord(font, capHeight)
+  }
+
+  #buildRawWord(font, capHeight) {
+    // The raw text: a faint stencil of TEDxTIET, written on the stage from
+    // the very first frame. The finished letters are applied on top of it.
+    this.rawLetters = []
+    const group = new THREE.Group()
+    this.logo.add(group)
+
     this.letters.forEach((l, i) => {
-      const [ex, ey] = ENTRY_VECTORS[i % ENTRY_VECTORS.length]
-      l.mesh.position.set(
-        l.final.x + ex * (1 + Math.random() * 0.5),
-        l.final.y + ey * (1 + Math.random() * 0.5),
-        -3.5 - Math.random() * 4,
-      )
-      l.mesh.rotation.set(
-        (Math.random() - 0.5) * 2.2,
-        (Math.random() - 0.5) * 2.2,
-        (Math.random() - 0.5) * 0.8,
-      )
-      l.mesh.scale.set(1, 1, 0.02) // arrives flat, extrudes on landing
+      const flat = new TextGeometry(WORD[i], { font, size: 1, depth: 0.001, bevelEnabled: false })
+      flat.computeBoundingBox()
+      const bb = flat.boundingBox
+      const width = bb.max.x - bb.min.x
+      flat.translate(-bb.min.x - width / 2, -capHeight / 2, 0)
+
+      const edges = new THREE.EdgesGeometry(flat, 20)
+      flat.dispose()
+      const material = new THREE.LineBasicMaterial({
+        color: 0xb9b5b0,
+        transparent: true,
+        opacity: 0.3,
+      })
+      const line = new THREE.LineSegments(edges, material)
+      line.position.set(l.final.x, l.final.y, -0.05)
+      this.rawLetters.push({ line, material })
+      group.add(line)
     })
   }
 
@@ -320,6 +336,7 @@ export class HeroScene {
     }
     for (const s of this.shards) s.material.opacity = 0
     for (const g of this.genreLayers) g.material.opacity = 0
+    for (const r of this.rawLetters) r.material.opacity = 0
     this.axis.material.opacity = 0
     this.state.rim = 1.1
     this.state.key = 2.4

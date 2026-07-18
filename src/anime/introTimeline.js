@@ -6,13 +6,16 @@ import { createTimeline, stagger, utils } from 'animejs'
  * opacity, light state) plus the DOM chrome.
  *
  * Beats:
- *   1. a red axis line draws across the dark stage
+ *   0. the raw text is already there — a faint stencil of TEDxTIET is
+ *      written on the stage from the very first frame
+ *   1. a red axis line draws through it
  *   2. scattered fragments swarm in and gather along it
  *   3. the fragments collapse into eight slots along the axis
  *   4. translucent genre panes — TECHNOLOGY, ENTERTAINMENT, DESIGN, … —
- *      fly in and stack one on another around the axis
- *   5. the stack compresses into the axis and the flat letters of
- *      TEDxTIET land in its place, each from its own direction
+ *      fly in and stack one on another over the raw text
+ *   5. the stack compresses into the axis and the finished letters are
+ *      applied onto their raw outlines like a sticker being laid down —
+ *      each one curls flat, left to right, absorbing the stencil beneath
  *   6. the letters extrude to 3D as the red rim light flashes on
  *   7. the camera eases back, the stage floor wakes, the chrome fades in
  */
@@ -128,24 +131,31 @@ export function buildIntroTimeline(scene, chrome, onDone) {
   )
   tl.add(layerMats, { opacity: 0, duration: 340, delay: stagger(60), ease: 'linear' }, 3240)
 
-  // …and the flat letters land in its place, one direction each
+  // …and the finished letters are applied onto their raw outlines,
+  // sticker-style: each curls down flat, left to right
   const letterPos = scene.letters.map((l) => l.mesh.position)
   const letterRot = scene.letters.map((l) => l.mesh.rotation)
   const letterMats = scene.letters.map((l) => l.material)
-  tl.add(letterMats, { opacity: 1, duration: 520, delay: stagger(70), ease: 'linear' }, 3300)
+  tl.add(letterMats, { opacity: 1, duration: 260, delay: stagger(85), ease: 'linear' }, 3200)
   tl.add(
     letterPos,
     {
-      x: (_, i) => scene.letters[i].final.x,
       y: (_, i) => scene.letters[i].final.y,
-      z: (_, i) => scene.letters[i].final.z,
-      duration: 1050,
-      delay: stagger(70),
+      z: 0,
+      duration: 640,
+      delay: stagger(85),
+      ease: 'outQuint',
     },
-    3300,
+    3200,
   )
-  tl.add(letterRot, { x: 0, y: 0, z: 0, duration: 1050, delay: stagger(70) }, 3300)
-  tl.add(scene.state, { key: 2.4, duration: 900, ease: 'outQuad' }, 3300)
+  tl.add(letterRot, { x: 0, duration: 640, delay: stagger(85), ease: 'outQuint' }, 3200)
+  // the stencil beneath is absorbed as each letter lands
+  tl.add(
+    scene.rawLetters.map((r) => r.material),
+    { opacity: 0, duration: 420, delay: stagger(85), ease: 'linear' },
+    3420,
+  )
+  tl.add(scene.state, { key: 2.4, duration: 900, ease: 'outQuad' }, 3200)
 
   // the axis has done its job
   tl.add(scene.axis.scale, { x: 0.001, duration: 420, ease: 'inQuint' }, 4150)
