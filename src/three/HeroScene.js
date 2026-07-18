@@ -17,6 +17,9 @@ const ENTRY_VECTORS = [
   [-2.6, -1.4], [0.6, 3.2], [2.8, -0.8], [3.4, 0.4],
 ]
 
+// The genres that stack up to become the event — bottom to top.
+const GENRES = ['TECHNOLOGY', 'ENTERTAINMENT', 'DESIGN', 'SCIENCE', 'ART', 'CULTURE']
+
 export class HeroScene {
   constructor(canvas) {
     this.canvas = canvas
@@ -42,6 +45,7 @@ export class HeroScene {
     this.#buildLogo()
     this.#buildShards()
     this.#buildAxis()
+    this.#buildGenreLayers()
     this.#buildFloor()
     this.#buildDust()
 
@@ -187,6 +191,76 @@ export class HeroScene {
     this.logo.add(this.axis)
   }
 
+  #buildGenreLayers() {
+    // The mid-transition: translucent glass panes, one per genre, that fly
+    // in and stack one on another before compressing into the wordmark.
+    this.genreLayers = []
+    const group = new THREE.Group()
+    this.logo.add(group)
+
+    const paneW = this.logoWidth + 1.2
+    const paneH = paneW * 0.375 // matches the 1024x384 label texture aspect
+    const gap = 0.55
+    const geometry = new THREE.PlaneGeometry(paneW, paneH)
+
+    GENRES.forEach((genre, i) => {
+      const red = i % 2 === 1
+      const texture = this.#makeGenreTexture(genre, red)
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+      const mesh = new THREE.Mesh(geometry, material)
+
+      // final stack slot, centered on the axis line
+      const stackY = (i - (GENRES.length - 1) / 2) * gap
+      mesh.rotation.x = -Math.PI / 2 + 0.62 // tilted toward the camera
+      mesh.position.set(0, stackY, -0.4)
+
+      // entry state: alternating from below and above, pushed back, extra tilt
+      const fromBelow = i % 2 === 0
+      mesh.position.y = stackY + (fromBelow ? -3.6 : 3.6)
+      mesh.position.z = -3
+      mesh.rotation.x += fromBelow ? -0.7 : 0.7
+
+      this.genreLayers.push({ mesh, material, texture, stackY })
+      group.add(mesh)
+    })
+  }
+
+  #makeGenreTexture(text, red) {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1024
+    canvas.height = 384
+    const ctx = canvas.getContext('2d')
+
+    const tint = red ? 'rgba(235, 0, 40, 0.12)' : 'rgba(244, 242, 239, 0.08)'
+    const edge = red ? 'rgba(235, 0, 40, 0.8)' : 'rgba(244, 242, 239, 0.65)'
+
+    const r = 28
+    ctx.beginPath()
+    ctx.roundRect(8, 8, canvas.width - 16, canvas.height - 16, r)
+    ctx.fillStyle = tint
+    ctx.fill()
+    ctx.lineWidth = 5
+    ctx.strokeStyle = edge
+    ctx.stroke()
+
+    ctx.font = '700 92px "Archivo Variable", "Helvetica Neue", Helvetica, Arial, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '14px'
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 4)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.anisotropy = 4
+    return texture
+  }
+
   #buildFloor() {
     this.floor = createRippleFloor({ y: -1.75, maxRadius: 15 })
     this.scene.add(this.floor.points)
@@ -245,6 +319,7 @@ export class HeroScene {
       l.material.opacity = 1
     }
     for (const s of this.shards) s.material.opacity = 0
+    for (const g of this.genreLayers) g.material.opacity = 0
     this.axis.material.opacity = 0
     this.state.rim = 1.1
     this.state.key = 2.4
@@ -324,7 +399,10 @@ export class HeroScene {
     this.renderer.setAnimationLoop(null)
     this.scene.traverse((obj) => {
       if (obj.geometry) obj.geometry.dispose()
-      if (obj.material) obj.material.dispose()
+      if (obj.material) {
+        if (obj.material.map) obj.material.map.dispose()
+        obj.material.dispose()
+      }
     })
     this.renderer.dispose()
   }

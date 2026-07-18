@@ -8,10 +8,13 @@ import { createTimeline, stagger, utils } from 'animejs'
  * Beats:
  *   1. a red axis line draws across the dark stage
  *   2. scattered fragments swarm in and gather along it
- *   3. the fragments collapse into eight slots; the flat letters of
- *      TEDxTIET land in their place, each from its own direction
- *   4. the letters extrude to 3D as the red rim light flashes on
- *   5. the camera eases back, the stage floor wakes, the chrome fades in
+ *   3. the fragments collapse into eight slots along the axis
+ *   4. translucent genre panes — TECHNOLOGY, ENTERTAINMENT, DESIGN, … —
+ *      fly in and stack one on another around the axis
+ *   5. the stack compresses into the axis and the flat letters of
+ *      TEDxTIET land in its place, each from its own direction
+ *   6. the letters extrude to 3D as the red rim light flashes on
+ *   7. the camera eases back, the stage floor wakes, the chrome fades in
  */
 export function buildIntroTimeline(scene, chrome, onDone) {
   const tl = createTimeline({
@@ -65,7 +68,7 @@ export function buildIntroTimeline(scene, chrome, onDone) {
     300,
   )
 
-  // 3 — fragments collapse into the letter slots…
+  // 3 — fragments collapse into the letter slots along the axis
   tl.add(
     shardPos,
     {
@@ -85,11 +88,51 @@ export function buildIntroTimeline(scene, chrome, onDone) {
   )
   tl.add(shardMats, { opacity: 0, duration: 300, delay: stagger(4), ease: 'linear' }, 1520)
 
-  // …and the flat letters land in their place, one direction each
+  // 4 — the genre panes fly in and stack one on another around the axis
+  const layerPos = scene.genreLayers.map((g) => g.mesh.position)
+  const layerRot = scene.genreLayers.map((g) => g.mesh.rotation)
+  const layerMats = scene.genreLayers.map((g) => g.material)
+  tl.add(layerMats, { opacity: 0.85, duration: 420, delay: stagger(170), ease: 'linear' }, 1600)
+  tl.add(
+    layerPos,
+    {
+      y: (_, i) => scene.genreLayers[i].stackY,
+      z: -0.4,
+      duration: 900,
+      delay: stagger(170),
+      ease: 'outQuint',
+    },
+    1600,
+  )
+  tl.add(
+    layerRot,
+    { x: -Math.PI / 2 + 0.62, duration: 900, delay: stagger(170), ease: 'outQuint' },
+    1600,
+  )
+
+  // 5 — the stack compresses into the axis…
+  tl.add(
+    layerPos,
+    { y: 0, duration: 480, delay: stagger(60), ease: 'inQuad' },
+    3050,
+  )
+  tl.add(
+    layerRot,
+    { x: 0, duration: 480, delay: stagger(60), ease: 'inQuad' },
+    3050,
+  )
+  tl.add(
+    scene.genreLayers.map((g) => g.mesh.scale),
+    { x: 0.24, y: 0.24, duration: 500, delay: stagger(60), ease: 'inQuad' },
+    3070,
+  )
+  tl.add(layerMats, { opacity: 0, duration: 340, delay: stagger(60), ease: 'linear' }, 3240)
+
+  // …and the flat letters land in its place, one direction each
   const letterPos = scene.letters.map((l) => l.mesh.position)
   const letterRot = scene.letters.map((l) => l.mesh.rotation)
   const letterMats = scene.letters.map((l) => l.material)
-  tl.add(letterMats, { opacity: 1, duration: 520, delay: stagger(70), ease: 'linear' }, 1500)
+  tl.add(letterMats, { opacity: 1, duration: 520, delay: stagger(70), ease: 'linear' }, 3300)
   tl.add(
     letterPos,
     {
@@ -99,32 +142,32 @@ export function buildIntroTimeline(scene, chrome, onDone) {
       duration: 1050,
       delay: stagger(70),
     },
-    1500,
+    3300,
   )
-  tl.add(letterRot, { x: 0, y: 0, z: 0, duration: 1050, delay: stagger(70) }, 1500)
+  tl.add(letterRot, { x: 0, y: 0, z: 0, duration: 1050, delay: stagger(70) }, 3300)
+  tl.add(scene.state, { key: 2.4, duration: 900, ease: 'outQuad' }, 3300)
 
   // the axis has done its job
-  tl.add(scene.axis.scale, { x: 0.001, duration: 420, ease: 'inQuint' }, 2350)
-  tl.add(scene.axis.material, { opacity: 0, duration: 380, ease: 'linear' }, 2380)
+  tl.add(scene.axis.scale, { x: 0.001, duration: 420, ease: 'inQuint' }, 4150)
+  tl.add(scene.axis.material, { opacity: 0, duration: 380, ease: 'linear' }, 4180)
 
-  // 4 — extrusion pop + red rim flash: the logo becomes an object
+  // 6 — extrusion pop + red rim flash: the logo becomes an object
   tl.add(
     scene.letters.map((l) => l.mesh.scale),
     { z: 1, duration: 560, delay: stagger(55) },
-    2480,
+    4280,
   )
-  tl.add(scene.state, { key: 2.4, duration: 900, ease: 'outQuad' }, 1500)
-  tl.add(scene.state, { rim: 2.6, duration: 260, ease: 'outQuad' }, 2520)
-  tl.add(scene.state, { rim: 1.1, duration: 900, ease: 'outQuad' }, 2800)
+  tl.add(scene.state, { rim: 2.6, duration: 260, ease: 'outQuad' }, 4320)
+  tl.add(scene.state, { rim: 1.1, duration: 900, ease: 'outQuad' }, 4600)
 
-  // 5 — settle: camera eases back, idle life ramps in, chrome appears
-  tl.add(scene.state, { camZ: 10.6, duration: 1400, ease: 'outQuint' }, 2650)
-  tl.add(scene.state, { idle: 1, duration: 1000, ease: 'outQuad' }, 2900)
+  // 7 — settle: camera eases back, idle life ramps in, chrome appears
+  tl.add(scene.state, { camZ: 10.6, duration: 1400, ease: 'outQuint' }, 4450)
+  tl.add(scene.state, { idle: 1, duration: 1000, ease: 'outQuad' }, 4700)
   if (chromeEls.length) {
     tl.add(
       chromeEls,
       { opacity: 1, translateY: '0rem', duration: 700, delay: stagger(90), ease: 'outQuint' },
-      3000,
+      4800,
     )
   }
 
