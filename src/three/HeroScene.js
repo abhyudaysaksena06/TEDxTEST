@@ -10,8 +10,15 @@ const FINAL_CAM_Z = 10.6
 const LETTER_DEPTH = 0.24
 const TRACKING = 0.09
 
-// The genres that stack up to become the event — bottom to top.
-const GENRES = ['TECHNOLOGY', 'ENTERTAINMENT', 'DESIGN', 'SCIENCE', 'ART', 'CULTURE']
+// The flat sheets applied over the stencil, bottom of the stack first.
+// Each is the exact TEDxTIET letterform — a layer of the title itself —
+// stepping up from near-black through TED red toward the white original.
+const LAYER_TINTS = [
+  { color: 0x262624, opacity: 0.85 },
+  { color: 0x8a0018, opacity: 0.9 },
+  { color: 0x55524e, opacity: 0.9 },
+  { color: 0xeb0028, opacity: 0.95 },
+]
 
 export class HeroScene {
   constructor(canvas) {
@@ -36,9 +43,6 @@ export class HeroScene {
 
     this.#buildLights()
     this.#buildLogo()
-    this.#buildShards()
-    this.#buildAxis()
-    this.#buildGenreLayers()
     this.#buildFloor()
     this.#buildDust()
 
@@ -62,7 +66,7 @@ export class HeroScene {
   #buildLogo() {
     const font = new FontLoader().parse(helvetikerBold)
 
-    // rig: idle float + pointer parallax. Letters inside are owned by the
+    // rig: idle float + pointer parallax. Everything inside is owned by the
     // intro timeline, so the two motion systems never fight.
     this.rig = new THREE.Group()
     this.logo = new THREE.Group()
@@ -74,8 +78,7 @@ export class HeroScene {
 
     let cursor = 0
     for (let i = 0; i < WORD.length; i++) {
-      const char = WORD[i]
-      const geometry = new TextGeometry(char, {
+      const geometry = new TextGeometry(WORD[i], {
         font,
         size: 1,
         depth: LETTER_DEPTH,
@@ -88,8 +91,8 @@ export class HeroScene {
       geometry.computeBoundingBox()
       const bb = geometry.boundingBox
       const width = bb.max.x - bb.min.x
-      // center each glyph on its own origin so rotation reads naturally,
-      // sharing one vertical center so the baseline stays true
+      // center each glyph on its own origin so the peel rotation reads
+      // naturally, sharing one vertical center so the baseline stays true
       geometry.translate(-bb.min.x - width / 2, -capHeight / 2, -LETTER_DEPTH / 2)
 
       const material = new THREE.MeshStandardMaterial({
@@ -112,21 +115,21 @@ export class HeroScene {
     // shift finals so the word is centered
     for (const l of this.letters) l.final.x -= this.logoWidth / 2
 
-    // peel-on start states: each finished letter hovers over its raw
-    // outline, curled toward the camera like the unstuck end of a sticker,
-    // and is laid down flat left-to-right by the timeline
+    // peel-on start state: the finished word hovers over its stencil,
+    // curled toward the camera like the unstuck end of a sticker
     for (const l of this.letters) {
-      l.mesh.position.set(l.final.x, l.final.y + 0.22, 1.7)
-      l.mesh.rotation.set(-1.15, 0, 0)
-      l.mesh.scale.set(1, 1, 0.02) // lands flat, extrudes afterwards
+      l.mesh.position.set(l.final.x, l.final.y + 0.26, 1.6)
+      l.mesh.rotation.set(-1.25, 0, 0)
+      l.mesh.scale.set(1, 1, 0.02) // lands flat, extrudes at the end
     }
 
     this.#buildRawWord(font, capHeight)
+    this.#buildWordLayers(font, capHeight)
   }
 
   #buildRawWord(font, capHeight) {
     // The raw text: a faint stencil of TEDxTIET, written on the stage from
-    // the very first frame. The finished letters are applied on top of it.
+    // the very first frame. Every layer is applied on top of it.
     this.rawLetters = []
     const group = new THREE.Group()
     this.logo.add(group)
@@ -146,135 +149,49 @@ export class HeroScene {
         opacity: 0.3,
       })
       const line = new THREE.LineSegments(edges, material)
-      line.position.set(l.final.x, l.final.y, -0.05)
+      line.position.set(l.final.x, l.final.y, -0.16)
       this.rawLetters.push({ line, material })
       group.add(line)
     })
   }
 
-  #buildShards() {
-    // Abstract fragments that swarm onto the axis before the letters land.
-    this.shards = []
-    const shardGroup = new THREE.Group()
-    this.logo.add(shardGroup)
-
-    const count = 72
-    for (let i = 0; i < count; i++) {
-      const red = Math.random() < 0.24
-      const geometry = new THREE.BoxGeometry(
-        0.25 + Math.random() * 0.75,
-        0.02 + Math.random() * 0.05,
-        0.02 + Math.random() * 0.03,
-      )
-      const material = new THREE.MeshBasicMaterial({
-        color: red ? TED_RED : 0xf4f2ef,
-        transparent: true,
-        opacity: 0,
-      })
-      const mesh = new THREE.Mesh(geometry, material)
-
-      const slot = this.letters[i % this.letters.length].final
-      const jx = (Math.random() - 0.5) * 1.1
-      const jy = (Math.random() - 0.5) * 1.3
-
-      const a = Math.random() * Math.PI * 2
-      const b = (Math.random() - 0.5) * Math.PI
-      const r = 6 + Math.random() * 6
-      mesh.position.set(
-        Math.cos(a) * Math.cos(b) * r,
-        Math.sin(b) * r * 0.7,
-        Math.sin(a) * Math.cos(b) * r - 2,
-      )
-      mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
-
-      this.shards.push({
-        mesh,
-        material,
-        home: { x: slot.x + jx, y: slot.y + jy, z: slot.z + (Math.random() - 0.5) * 0.6 },
-        slot,
-      })
-      shardGroup.add(mesh)
-    }
-  }
-
-  #buildAxis() {
-    // The thin red line the fragments gather around — the first thing seen.
-    const geometry = new THREE.BoxGeometry(1, 0.016, 0.016)
-    const material = new THREE.MeshBasicMaterial({ color: TED_RED, transparent: true, opacity: 0 })
-    this.axis = new THREE.Mesh(geometry, material)
-    this.axis.position.set(0, 0, -0.4)
-    this.axis.scale.x = 0.001
-    this.logo.add(this.axis)
-  }
-
-  #buildGenreLayers() {
-    // The mid-transition: translucent glass panes, one per genre, that fly
-    // in and stack one on another before compressing into the wordmark.
-    this.genreLayers = []
+  #buildWordLayers(font, capHeight) {
+    // The stack: flat sheets in the exact shape of the title, one per tint,
+    // peeled down onto the stencil one after another before the finished
+    // white word is applied last.
+    this.wordLayers = []
     const group = new THREE.Group()
     this.logo.add(group)
 
-    const paneW = this.logoWidth + 1.2
-    const paneH = paneW * 0.375 // matches the 1024x384 label texture aspect
-    const gap = 0.55
-    const geometry = new THREE.PlaneGeometry(paneW, paneH)
+    LAYER_TINTS.forEach((tint, layerIndex) => {
+      const layer = []
+      this.letters.forEach((l, i) => {
+        const shapes = font.generateShapes(WORD[i], 1)
+        const geometry = new THREE.ShapeGeometry(shapes, 8)
+        geometry.computeBoundingBox()
+        const bb = geometry.boundingBox
+        const width = bb.max.x - bb.min.x
+        geometry.translate(-bb.min.x - width / 2, -capHeight / 2, 0)
 
-    GENRES.forEach((genre, i) => {
-      const red = i % 2 === 1
-      const texture = this.#makeGenreTexture(genre, red)
-      const material = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        opacity: 0,
-        side: THREE.DoubleSide,
-        depthWrite: false,
+        const material = new THREE.MeshBasicMaterial({
+          color: tint.color,
+          transparent: true,
+          opacity: 0,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })
+        const mesh = new THREE.Mesh(geometry, material)
+
+        // each sheet rests a hair above the previous one
+        const final = { x: l.final.x, y: l.final.y, z: -0.14 + layerIndex * 0.035 }
+        mesh.position.set(final.x, final.y + 0.26, final.z + 1.6)
+        mesh.rotation.set(-1.25, 0, 0)
+
+        layer.push({ mesh, material, final, restOpacity: tint.opacity })
+        group.add(mesh)
       })
-      const mesh = new THREE.Mesh(geometry, material)
-
-      // final stack slot, centered on the axis line
-      const stackY = (i - (GENRES.length - 1) / 2) * gap
-      mesh.rotation.x = -Math.PI / 2 + 0.62 // tilted toward the camera
-      mesh.position.set(0, stackY, -0.4)
-
-      // entry state: alternating from below and above, pushed back, extra tilt
-      const fromBelow = i % 2 === 0
-      mesh.position.y = stackY + (fromBelow ? -3.6 : 3.6)
-      mesh.position.z = -3
-      mesh.rotation.x += fromBelow ? -0.7 : 0.7
-
-      this.genreLayers.push({ mesh, material, texture, stackY })
-      group.add(mesh)
+      this.wordLayers.push(layer)
     })
-  }
-
-  #makeGenreTexture(text, red) {
-    const canvas = document.createElement('canvas')
-    canvas.width = 1024
-    canvas.height = 384
-    const ctx = canvas.getContext('2d')
-
-    const tint = red ? 'rgba(235, 0, 40, 0.12)' : 'rgba(244, 242, 239, 0.08)'
-    const edge = red ? 'rgba(235, 0, 40, 0.8)' : 'rgba(244, 242, 239, 0.65)'
-
-    const r = 28
-    ctx.beginPath()
-    ctx.roundRect(8, 8, canvas.width - 16, canvas.height - 16, r)
-    ctx.fillStyle = tint
-    ctx.fill()
-    ctx.lineWidth = 5
-    ctx.strokeStyle = edge
-    ctx.stroke()
-
-    ctx.font = '700 92px "Archivo Variable", "Helvetica Neue", Helvetica, Arial, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '14px'
-    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 4)
-
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.anisotropy = 4
-    return texture
   }
 
   #buildFloor() {
@@ -334,10 +251,8 @@ export class HeroScene {
       l.mesh.scale.set(1, 1, 1)
       l.material.opacity = 1
     }
-    for (const s of this.shards) s.material.opacity = 0
-    for (const g of this.genreLayers) g.material.opacity = 0
+    for (const layer of this.wordLayers) for (const s of layer) s.material.opacity = 0
     for (const r of this.rawLetters) r.material.opacity = 0
-    this.axis.material.opacity = 0
     this.state.rim = 1.1
     this.state.key = 2.4
     this.state.camZ = FINAL_CAM_Z
