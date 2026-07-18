@@ -11,14 +11,9 @@ const LETTER_DEPTH = 0.24
 const TRACKING = 0.09
 
 // The flat sheets applied over the stencil, bottom of the stack first.
-// Each is the exact TEDxTIET letterform — a layer of the title itself —
-// stepping up from near-black through TED red toward the white original.
-const LAYER_TINTS = [
-  { color: 0x262624, opacity: 0.85 },
-  { color: 0x8a0018, opacity: 0.9 },
-  { color: 0x55524e, opacity: 0.9 },
-  { color: 0xeb0028, opacity: 0.95 },
-]
+// Each is the exact TEDxTIET letterform carrying its own theme texture —
+// the things the event is made of, applied as layers of the title itself.
+const LAYER_THEMES = ['education', 'technology', 'design', 'tiet']
 
 export class HeroScene {
   constructor(canvas) {
@@ -156,14 +151,15 @@ export class HeroScene {
   }
 
   #buildWordLayers(font, capHeight) {
-    // The stack: flat sheets in the exact shape of the title, one per tint,
-    // peeled down onto the stencil one after another before the finished
-    // white word is applied last.
+    // The stack: flat sheets in the exact shape of the title, each carrying
+    // a theme texture, peeled down onto the stencil one after another
+    // before the finished white word is applied last.
     this.wordLayers = []
     const group = new THREE.Group()
     this.logo.add(group)
 
-    LAYER_TINTS.forEach((tint, layerIndex) => {
+    LAYER_THEMES.forEach((theme, layerIndex) => {
+      const texture = this.#makeThemeTexture(theme)
       const layer = []
       this.letters.forEach((l, i) => {
         const shapes = font.generateShapes(WORD[i], 1)
@@ -174,7 +170,7 @@ export class HeroScene {
         geometry.translate(-bb.min.x - width / 2, -capHeight / 2, 0)
 
         const material = new THREE.MeshBasicMaterial({
-          color: tint.color,
+          map: texture,
           transparent: true,
           opacity: 0,
           side: THREE.DoubleSide,
@@ -187,11 +183,176 @@ export class HeroScene {
         mesh.position.set(final.x, final.y + 0.26, final.z + 1.6)
         mesh.rotation.set(-1.25, 0, 0)
 
-        layer.push({ mesh, material, final, restOpacity: tint.opacity })
+        layer.push({ mesh, material, final, restOpacity: 0.96 })
         group.add(mesh)
       })
       this.wordLayers.push(layer)
     })
+  }
+
+  // ————— theme textures —————
+  // Procedural tiles drawn at runtime; ShapeGeometry UVs are in glyph
+  // units, so with RepeatWrapping one tile covers about a third of a
+  // letter's height and the pattern flows across every letterform.
+
+  #makeThemeTexture(theme) {
+    const S = 512
+    const canvas = document.createElement('canvas')
+    canvas.width = S
+    canvas.height = S
+    const ctx = canvas.getContext('2d')
+
+    if (theme === 'education') this.#drawEducationTile(ctx, S)
+    else if (theme === 'technology') this.#drawTechnologyTile(ctx, S)
+    else if (theme === 'design') this.#drawDesignTile(ctx, S)
+    else this.#drawTietTile(ctx, S)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
+    texture.repeat.set(2.6, 2.6)
+    texture.anisotropy = 4
+    return texture
+  }
+
+  #drawEducationTile(ctx, S) {
+    // ruled notebook paper, chalk formulas, a red margin
+    ctx.fillStyle = '#101013'
+    ctx.fillRect(0, 0, S, S)
+    ctx.strokeStyle = 'rgba(244, 242, 239, 0.11)'
+    ctx.lineWidth = 2
+    for (let y = 28; y < S; y += 56) {
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.lineTo(S, y)
+      ctx.stroke()
+    }
+    ctx.strokeStyle = 'rgba(235, 0, 40, 0.55)'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.moveTo(84, 0)
+    ctx.lineTo(84, S)
+    ctx.stroke()
+
+    const notes = ['E = mc²', '∑ f(x)', 'λ → ∞', '√−1', 'dy/dx', 'TEDxTIET']
+    ctx.fillStyle = 'rgba(244, 242, 239, 0.3)'
+    notes.forEach((n, i) => {
+      ctx.save()
+      ctx.translate(120 + (i % 2) * 190, 60 + i * 78)
+      ctx.rotate(-0.04 + (i % 3) * 0.03)
+      ctx.font = 'italic 30px Georgia, "Times New Roman", serif'
+      ctx.fillText(n, 0, 0)
+      ctx.restore()
+    })
+  }
+
+  #drawTechnologyTile(ctx, S) {
+    // circuit-board traces with solder pads
+    ctx.fillStyle = '#0b0c0d'
+    ctx.fillRect(0, 0, S, S)
+
+    const rnd = (seed => () => {
+      seed = (seed * 16807) % 2147483647
+      return seed / 2147483647
+    })(42)
+
+    const grid = 32
+    ctx.lineWidth = 3
+    for (let n = 0; n < 16; n++) {
+      let x = Math.floor(rnd() * 16) * grid
+      let y = Math.floor(rnd() * 16) * grid
+      const red = rnd() < 0.7
+      ctx.strokeStyle = red ? 'rgba(235, 0, 40, 0.5)' : 'rgba(244, 242, 239, 0.28)'
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      const steps = 3 + Math.floor(rnd() * 3)
+      for (let s = 0; s < steps; s++) {
+        if (rnd() < 0.5) x += (Math.floor(rnd() * 5) - 2) * grid
+        else y += (Math.floor(rnd() * 5) - 2) * grid
+        ctx.lineTo(x, y)
+      }
+      ctx.stroke()
+      ctx.fillStyle = red ? '#eb0028' : 'rgba(244, 242, 239, 0.55)'
+      ctx.beginPath()
+      ctx.arc(x, y, 7, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#0b0c0d'
+      ctx.beginPath()
+      ctx.arc(x, y, 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    ctx.fillStyle = 'rgba(244, 242, 239, 0.12)'
+    for (let n = 0; n < 60; n++) {
+      ctx.fillRect(Math.floor(rnd() * 16) * grid - 1, Math.floor(rnd() * 16) * grid - 1, 3, 3)
+    }
+  }
+
+  #drawDesignTile(ctx, S) {
+    // a drafting sheet: grid, contour curves, bezier handles, crosshairs
+    ctx.fillStyle = '#191a1c'
+    ctx.fillRect(0, 0, S, S)
+
+    ctx.strokeStyle = 'rgba(244, 242, 239, 0.07)'
+    ctx.lineWidth = 1
+    for (let p = 0; p < S; p += 64) {
+      ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, S); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(S, p); ctx.stroke()
+    }
+
+    ctx.strokeStyle = 'rgba(244, 242, 239, 0.22)'
+    ctx.lineWidth = 2
+    for (let r = 40; r <= 160; r += 40) {
+      ctx.beginPath()
+      ctx.ellipse(150, 330, r * 1.25, r, -0.4, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
+    // a bezier curve with its control handles — the designer's mark
+    ctx.strokeStyle = 'rgba(235, 0, 40, 0.65)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(300, 90)
+    ctx.bezierCurveTo(390, 40, 400, 220, 470, 170)
+    ctx.stroke()
+    ctx.strokeStyle = 'rgba(244, 242, 239, 0.3)'
+    ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.moveTo(300, 90); ctx.lineTo(390, 40); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(470, 170); ctx.lineTo(400, 220); ctx.stroke()
+    ctx.fillStyle = '#f4f2ef'
+    for (const [px, py] of [[300, 90], [390, 40], [400, 220], [470, 170]]) {
+      ctx.fillRect(px - 4, py - 4, 8, 8)
+    }
+
+    for (const [cx, cy] of [[90, 100], [440, 400]]) {
+      ctx.strokeStyle = 'rgba(235, 0, 40, 0.55)'
+      ctx.lineWidth = 2
+      ctx.beginPath(); ctx.arc(cx, cy, 14, 0, Math.PI * 2); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(cx - 22, cy); ctx.lineTo(cx + 22, cy); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(cx, cy - 22); ctx.lineTo(cx, cy + 22); ctx.stroke()
+    }
+  }
+
+  #drawTietTile(ctx, S) {
+    // the institute sheet: TED red drenched, tiled with the wordmark
+    ctx.fillStyle = '#d90024'
+    ctx.fillRect(0, 0, S, S)
+
+    ctx.save()
+    ctx.translate(S / 2, S / 2)
+    ctx.rotate(-Math.PI / 8)
+    ctx.font = '700 44px "Archivo Variable", "Helvetica Neue", Helvetica, Arial, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    for (let row = -3; row <= 3; row++) {
+      const offset = (row % 2) * 130
+      ctx.fillStyle = row % 2 ? 'rgba(70, 0, 13, 0.55)' : 'rgba(255, 255, 255, 0.16)'
+      for (let col = -2; col <= 2; col++) {
+        ctx.fillText('TEDxTIET', col * 260 + offset, row * 88)
+      }
+    }
+    ctx.restore()
   }
 
   #buildFloor() {
