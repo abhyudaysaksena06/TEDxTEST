@@ -40,6 +40,18 @@ export class HeroScene {
     // Values the anime.js timeline drives; the render loop reads them.
     this.state = { camZ: 9, camY: 1.05, rim: 0, key: 0, idle: 0, stage: 0 }
 
+    // Live-tunable effect intensities (the ?tune panel edits these).
+    this.tuning = {
+      turnY: 0.3, // how far the word turns toward the cursor (rad)
+      turnX: 0.16,
+      follow: 0.085, // how quickly it follows (per-frame damping)
+      floatAmp: 0.06, // levitation bob amplitude
+      backGlow: 0.15, // rear backlight opacity
+      ringGlow: 0.16, // carpet edge glow opacity
+      hoverTilt: 0.11, // per-letter tilt on hover (rad)
+      hoverGlow: 0.38, // photo emissive strength on hover
+    }
+
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 }
 
     this.#buildLights()
@@ -791,11 +803,12 @@ export class HeroScene {
 
       // sleek: the picture wraps the whole block and glows from within,
       // with a quiet red base glow and a slight tilt
+      const { hoverTilt, hoverGlow } = this.tuning
       l.hoverMat.opacity = hs.t
-      l.hoverMat.emissiveIntensity = 0.38 * hs.t
+      l.hoverMat.emissiveIntensity = hoverGlow * hs.t
       l.material.emissiveIntensity = 0.22 * hs.t
-      l.mesh.rotation.y = 0.11 * hs.t
-      l.mesh.rotation.x = -0.045 * hs.t
+      l.mesh.rotation.y = hoverTilt * hs.t
+      l.mesh.rotation.x = -hoverTilt * 0.4 * hs.t
     })
   }
 
@@ -852,27 +865,28 @@ export class HeroScene {
     const dt = 0.016
 
     // damped pointer — quick enough that the turn visibly follows the cursor
-    this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.085
-    this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.085
+    this.pointer.x += (this.pointer.tx - this.pointer.x) * this.tuning.follow
+    this.pointer.y += (this.pointer.ty - this.pointer.y) * this.tuning.follow
 
     const { state } = this
     const idle = this.reduced ? 0 : state.idle
 
     const bob = Math.sin(t * 0.55)
+    const { tuning } = this
     // the whole word turns to face the cursor
-    this.rig.rotation.y = this.pointer.x * 0.3 * idle + Math.sin(t * 0.32) * 0.035 * idle
-    this.rig.rotation.x = -this.pointer.y * 0.16 * idle + Math.sin(t * 0.21) * 0.015 * idle
-    this.rig.position.y = bob * 0.06 * this.rigScale * idle
+    this.rig.rotation.y = this.pointer.x * tuning.turnY * idle + Math.sin(t * 0.32) * 0.035 * idle
+    this.rig.rotation.x = -this.pointer.y * tuning.turnX * idle + Math.sin(t * 0.21) * 0.015 * idle
+    this.rig.position.y = bob * tuning.floatAmp * this.rigScale * idle
 
     // the stage breathes with the float: ring glow pulses, the contact
     // shadow tightens and lightens as the word rises
     const stage = state.stage
     this.carpetMat.opacity = stage
-    this.ringMat.opacity = stage * (this.reduced ? 0.2 : 0.16 + 0.07 * Math.sin(t * 0.8))
+    this.ringMat.opacity = stage * (this.reduced ? tuning.ringGlow : tuning.ringGlow + 0.07 * Math.sin(t * 0.8))
     this.shadowMat.opacity = stage * (0.5 - 0.14 * bob * idle)
     const shadowScale = 1 - 0.035 * bob * idle
     this.shadow.scale.set(1.6 * shadowScale, shadowScale, 1)
-    this.backGlowMat.opacity = stage * (this.reduced ? 0.16 : 0.15 + 0.035 * Math.sin(t * 0.45))
+    this.backGlowMat.opacity = stage * (this.reduced ? tuning.backGlow : tuning.backGlow + 0.035 * Math.sin(t * 0.45))
 
     this.camera.position.set(this.pointer.x * 0.18 * idle, state.camY, state.camZ)
     this.camera.lookAt(0, -0.18, 0)

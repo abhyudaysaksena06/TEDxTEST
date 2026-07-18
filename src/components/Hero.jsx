@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { HeroScene } from '../three/HeroScene.js'
 import { buildIntroTimeline } from '../anime/introTimeline.js'
+import TunePanel from './TunePanel.jsx'
 
 export default function Hero() {
   const canvasRef = useRef(null)
@@ -9,6 +10,10 @@ export default function Hero() {
   const bottomRightRef = useRef(null)
   const [webglFailed, setWebglFailed] = useState(false)
   const [introDone, setIntroDone] = useState(false)
+  const [sceneReady, setSceneReady] = useState(null)
+  const [tuneOpen, setTuneOpen] = useState(
+    () => typeof window !== 'undefined' && window.location.search.includes('tune'),
+  )
   const introRef = useRef(null)
 
   useEffect(() => {
@@ -20,6 +25,7 @@ export default function Hero() {
       setWebglFailed(true)
       return undefined
     }
+    setSceneReady(scene)
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     scene.setReducedMotion(reduced)
@@ -39,13 +45,20 @@ export default function Hero() {
     const onClick = (e) => {
       if (scene.assembled) scene.pulseAt(e.clientX, e.clientY, canvasRef.current.getBoundingClientRect())
     }
+    const onKey = (e) => {
+      if (e.key.toLowerCase() === 't' && e.target.tagName !== 'INPUT') {
+        setTuneOpen((open) => !open)
+      }
+    }
     window.addEventListener('resize', onResize)
     window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('keydown', onKey)
     canvasRef.current.addEventListener('click', onClick)
 
     return () => {
       window.removeEventListener('resize', onResize)
       window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('keydown', onKey)
       canvasRef.current?.removeEventListener('click', onClick)
       introRef.current?.timeline.pause()
       scene.dispose()
@@ -99,6 +112,9 @@ export default function Hero() {
           {introDone ? 'Hover a letter · click the stage for a ripple' : ' '}
         </p>
       </footer>
+
+      {/* live effect tuner — press T or visit ?tune */}
+      {tuneOpen && sceneReady && <TunePanel scene={sceneReady} onClose={() => setTuneOpen(false)} />}
 
       {/* skip control, only while the intro is running */}
       {!webglFailed && !introDone && (
