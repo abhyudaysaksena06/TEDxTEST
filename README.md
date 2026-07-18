@@ -13,15 +13,16 @@ a dark stage on which the wordmark assembles itself.
    down in reverse.
 3. The finished **white word is applied last**, absorbing the stencil.
 4. The word **extrudes to 3D** as the red rim light flashes on.
-5. The camera eases back and the logo settles into a floating, pointer-reactive
-   3D object sized to ~85% of the viewport width.
+5. The camera eases back and the logo settles, levitating over a TEDx stage —
+   a circular red carpet with a breathing edge glow and a contact shadow that
+   tracks the float — sized to ~85% of the viewport width.
 
 The background is a custom-shader "stage floor": a disc of points carrying slow
 radial waves outward from the logo — an idea spreading. **Click anywhere on the
 stage to send your own ripple.** Moving the pointer tilts the logo and camera.
 
-**Hover any letter** (or tap it on touch) and it takes on a quiet red glow
-and reveals a picture inside the glyph — stage, audience, microphone, the x,
+**Hover any letter** (or tap it on touch) and it tilts slightly, takes on a
+quiet red glow, and reveals a picture inside the glyph — stage, audience, microphone, the x,
 circuitry, an idea, a book, the campus. The art is generated at runtime; to use
 real photos instead, fill the `LETTER_IMAGES` array at the top of
 `src/three/HeroScene.js` with URLs or `/public` paths (one per letter).

@@ -38,13 +38,14 @@ export class HeroScene {
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 60)
 
     // Values the anime.js timeline drives; the render loop reads them.
-    this.state = { camZ: 9, camY: 0.7, rim: 0, key: 0, idle: 0 }
+    this.state = { camZ: 9, camY: 1.05, rim: 0, key: 0, idle: 0, stage: 0 }
 
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 }
 
     this.#buildLights()
     this.#buildLogo()
     this.#buildFloor()
+    this.#buildStage()
     this.#buildDust()
 
     this.resize()
@@ -578,6 +579,104 @@ export class HeroScene {
     this.raycaster = new THREE.Raycaster()
   }
 
+  #buildStage() {
+    // The TEDx stage the logo levitates over: the signature circular red
+    // carpet, a breathing edge glow, and a soft contact shadow that
+    // tracks the float.
+    const floorY = -1.74
+
+    const carpetTexture = this.#makeCarpetTexture()
+    this.carpetMat = new THREE.MeshBasicMaterial({
+      map: carpetTexture,
+      transparent: true,
+      opacity: 0,
+    })
+    this.carpet = new THREE.Mesh(new THREE.CircleGeometry(3.4, 72), this.carpetMat)
+    this.carpet.rotation.x = -Math.PI / 2
+    this.carpet.position.set(0, floorY, 0)
+
+    this.ringMat = new THREE.MeshBasicMaterial({
+      color: TED_RED,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+    this.ring = new THREE.Mesh(new THREE.RingGeometry(3.42, 3.72, 72), this.ringMat)
+    this.ring.rotation.x = -Math.PI / 2
+    this.ring.position.set(0, floorY + 0.005, 0)
+
+    const shadowCanvas = document.createElement('canvas')
+    shadowCanvas.width = shadowCanvas.height = 256
+    const sctx = shadowCanvas.getContext('2d')
+    const grad = sctx.createRadialGradient(128, 128, 10, 128, 128, 128)
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.55)')
+    grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.2)')
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    sctx.fillStyle = grad
+    sctx.fillRect(0, 0, 256, 256)
+    const shadowTexture = new THREE.CanvasTexture(shadowCanvas)
+    this.shadowMat = new THREE.MeshBasicMaterial({
+      map: shadowTexture,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    })
+    this.shadow = new THREE.Mesh(new THREE.CircleGeometry(2.6, 48), this.shadowMat)
+    this.shadow.rotation.x = -Math.PI / 2
+    this.shadow.position.set(0, floorY + 0.01, 0)
+    this.shadow.scale.set(1.6, 1, 1) // stretched under the wide word
+
+    this.scene.add(this.carpet, this.ring, this.shadow)
+  }
+
+  #makeCarpetTexture() {
+    const S = 512
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = S
+    const ctx = canvas.getContext('2d')
+    const c = S / 2
+
+    const base = ctx.createRadialGradient(c, c, 20, c, c, c)
+    base.addColorStop(0, '#d40023')
+    base.addColorStop(0.75, '#a3001b')
+    base.addColorStop(1, '#6f0012')
+    ctx.fillStyle = base
+    ctx.beginPath()
+    ctx.arc(c, c, c, 0, Math.PI * 2)
+    ctx.fill()
+
+    // woven rings
+    ctx.lineWidth = 1
+    for (let r = 24; r < c - 24; r += 12) {
+      ctx.strokeStyle = r % 24 ? 'rgba(0, 0, 0, 0.07)' : 'rgba(255, 255, 255, 0.05)'
+      ctx.beginPath()
+      ctx.arc(c, c, r, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
+    // fabric speckle
+    for (let i = 0; i < 1600; i++) {
+      const a = Math.random() * Math.PI * 2
+      const r = Math.sqrt(Math.random()) * (c - 8)
+      ctx.fillStyle = Math.random() < 0.5 ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.05)'
+      ctx.fillRect(c + Math.cos(a) * r, c + Math.sin(a) * r, 1.6, 1.6)
+    }
+
+    // border band
+    ctx.strokeStyle = 'rgba(40, 0, 7, 0.85)'
+    ctx.lineWidth = 14
+    ctx.beginPath()
+    ctx.arc(c, c, c - 9, 0, Math.PI * 2)
+    ctx.stroke()
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.anisotropy = 8
+    return texture
+  }
+
   #buildDust() {
     const count = 200
     const positions = new Float32Array(count * 3)
@@ -657,9 +756,11 @@ export class HeroScene {
       hs.t += (hs.target - hs.t) * (this.reduced ? 1 : 0.14)
       if (Math.abs(hs.target - hs.t) < 0.001) hs.t = hs.target
 
-      // sleek: just the picture and a quiet red glow — no lift, no scale
+      // sleek: the picture, a quiet red glow, and a slight tilt
       l.hoverMat.opacity = hs.t
       l.material.emissiveIntensity = 0.22 * hs.t
+      l.mesh.rotation.y = 0.11 * hs.t
+      l.mesh.rotation.x = -0.045 * hs.t
     })
   }
 
@@ -678,6 +779,7 @@ export class HeroScene {
     this.state.key = 2.4
     this.state.camZ = FINAL_CAM_Z
     this.state.idle = 1
+    this.state.stage = 1
     this.floor.uniforms.uFade.value = 1
     this.dustMat.opacity = 0.4
     this.assembled = true
@@ -721,12 +823,22 @@ export class HeroScene {
     const { state } = this
     const idle = this.reduced ? 0 : state.idle
 
+    const bob = Math.sin(t * 0.55)
     this.rig.rotation.y = this.pointer.x * 0.16 * idle + Math.sin(t * 0.32) * 0.045 * idle
     this.rig.rotation.x = -this.pointer.y * 0.1 * idle + Math.sin(t * 0.21) * 0.02 * idle
-    this.rig.position.y = Math.sin(t * 0.55) * 0.05 * this.rigScale * idle
+    this.rig.position.y = bob * 0.06 * this.rigScale * idle
+
+    // the stage breathes with the float: ring glow pulses, the contact
+    // shadow tightens and lightens as the word rises
+    const stage = state.stage
+    this.carpetMat.opacity = stage
+    this.ringMat.opacity = stage * (this.reduced ? 0.2 : 0.16 + 0.07 * Math.sin(t * 0.8))
+    this.shadowMat.opacity = stage * (0.5 - 0.14 * bob * idle)
+    const shadowScale = 1 - 0.035 * bob * idle
+    this.shadow.scale.set(1.6 * shadowScale, shadowScale, 1)
 
     this.camera.position.set(this.pointer.x * 0.35 * idle, state.camY, state.camZ)
-    this.camera.lookAt(0, -0.1, 0)
+    this.camera.lookAt(0, -0.18, 0)
 
     this.keyLight.intensity = state.key
     this.rimLeft.intensity = state.rim

@@ -39,8 +39,9 @@ export function buildIntroTimeline(scene, chrome, onDone) {
   const chromeEls = chrome.filter(Boolean)
   utils.set(chromeEls, { opacity: 0, translateY: '0.6rem' })
 
-  // stage floor and dust breathe in underneath everything
+  // stage floor, red carpet, and dust breathe in underneath everything
   tl.add(scene.floor.uniforms.uFade, { value: 1, duration: 2200, ease: 'outQuad' }, 100)
+  tl.add(scene.state, { stage: 1, duration: 2200, ease: 'outQuad' }, 300)
   tl.add(scene.dustMat, { opacity: 0.4, duration: 2000, ease: 'outQuad' }, 400)
 
   // 1 — the title-shaped sheets peel down onto the stencil, one per tint
