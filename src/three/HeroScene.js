@@ -656,9 +656,10 @@ export class HeroScene {
       opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      fog: false, // the scene fog would otherwise swallow the low opacity
     })
-    this.backGlow = new THREE.Mesh(new THREE.PlaneGeometry(30, 12), this.backGlowMat)
-    this.backGlow.position.set(0, 2.2, -9)
+    this.backGlow = new THREE.Mesh(new THREE.PlaneGeometry(36, 14), this.backGlowMat)
+    this.backGlow.position.set(0, 2.4, -9)
 
     this.scene.add(this.carpet, this.ring, this.shadow, this.backGlow)
   }
@@ -850,17 +851,17 @@ export class HeroScene {
     const t = this.clock.getElapsedTime()
     const dt = 0.016
 
-    // damped pointer
-    this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.045
-    this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.045
+    // damped pointer — quick enough that the turn visibly follows the cursor
+    this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.085
+    this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.085
 
     const { state } = this
     const idle = this.reduced ? 0 : state.idle
 
     const bob = Math.sin(t * 0.55)
-    // the whole word turns slightly to face the cursor
-    this.rig.rotation.y = this.pointer.x * 0.22 * idle + Math.sin(t * 0.32) * 0.04 * idle
-    this.rig.rotation.x = -this.pointer.y * 0.12 * idle + Math.sin(t * 0.21) * 0.018 * idle
+    // the whole word turns to face the cursor
+    this.rig.rotation.y = this.pointer.x * 0.3 * idle + Math.sin(t * 0.32) * 0.035 * idle
+    this.rig.rotation.x = -this.pointer.y * 0.16 * idle + Math.sin(t * 0.21) * 0.015 * idle
     this.rig.position.y = bob * 0.06 * this.rigScale * idle
 
     // the stage breathes with the float: ring glow pulses, the contact
@@ -871,7 +872,7 @@ export class HeroScene {
     this.shadowMat.opacity = stage * (0.5 - 0.14 * bob * idle)
     const shadowScale = 1 - 0.035 * bob * idle
     this.shadow.scale.set(1.6 * shadowScale, shadowScale, 1)
-    this.backGlowMat.opacity = stage * (this.reduced ? 0.11 : 0.1 + 0.025 * Math.sin(t * 0.45))
+    this.backGlowMat.opacity = stage * (this.reduced ? 0.16 : 0.15 + 0.035 * Math.sin(t * 0.45))
 
     this.camera.position.set(this.pointer.x * 0.18 * idle, state.camY, state.camZ)
     this.camera.lookAt(0, -0.18, 0)
