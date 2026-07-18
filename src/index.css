@@ -1,0 +1,52 @@
+@import '@fontsource-variable/archivo';
+@import 'tailwindcss';
+
+@theme {
+  --color-stage: #0a0a0a;
+  --color-stage-deep: #050505;
+  --color-ted: #eb0028;
+  --color-ted-dim: #8a0018;
+  --color-chalk: #f4f2ef;
+  --color-smoke: #b9b5b0;
+  --font-sans: 'Archivo Variable', 'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html,
+body {
+  background: var(--color-stage-deep);
+  color: var(--color-chalk);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-ted);
+  color: var(--color-chalk);
+}
+
+/* The three.js canvas sits behind all DOM chrome */
+.stage-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* DOM chrome pieces the anime.js timeline reveals — visible by default so the
+   page never ships blank if scripting fails; the timeline sets them to their
+   hidden start state at runtime before playing. */
+.chrome-reveal {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

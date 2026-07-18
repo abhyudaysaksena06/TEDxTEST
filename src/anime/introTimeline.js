@@ -1,0 +1,142 @@
+import { createTimeline, stagger, utils } from 'animejs'
+
+/**
+ * The assembly choreography, expressed as one anime.js timeline that drives
+ * plain objects on the three.js scene (positions, rotations, material
+ * opacity, light state) plus the DOM chrome.
+ *
+ * Beats:
+ *   1. a red axis line draws across the dark stage
+ *   2. scattered fragments swarm in and gather along it
+ *   3. the fragments collapse into eight slots; the flat letters of
+ *      TEDxTIET land in their place, each from its own direction
+ *   4. the letters extrude to 3D as the red rim light flashes on
+ *   5. the camera eases back, the stage floor wakes, the chrome fades in
+ */
+export function buildIntroTimeline(scene, chrome, onDone) {
+  const tl = createTimeline({
+    defaults: { ease: 'outExpo' },
+    autoplay: false,
+    onComplete: () => finish(),
+  })
+
+  let finished = false
+  const finish = () => {
+    if (finished) return
+    finished = true
+    scene.assembled = true
+    onDone?.()
+  }
+
+  const axisLength = scene.logoWidth + 1.6
+
+  // hide DOM chrome before first paint of the intro
+  const chromeEls = chrome.filter(Boolean)
+  utils.set(chromeEls, { opacity: 0, translateY: '0.6rem' })
+
+  // 1 — the axis line draws
+  tl.add(scene.axis.material, { opacity: 0.9, duration: 240, ease: 'linear' }, 60)
+  tl.add(scene.axis.scale, { x: axisLength, duration: 780 }, 60)
+
+  // stage floor breathes in underneath everything
+  tl.add(scene.floor.uniforms.uFade, { value: 1, duration: 2200, ease: 'outQuad' }, 200)
+  tl.add(scene.dustMat, { opacity: 0.4, duration: 2000, ease: 'outQuad' }, 500)
+
+  // 2 — fragments swarm onto the axis
+  const shardMats = scene.shards.map((s) => s.material)
+  const shardPos = scene.shards.map((s) => s.mesh.position)
+  const shardRot = scene.shards.map((s) => s.mesh.rotation)
+  tl.add(shardMats, { opacity: 0.85, duration: 320, delay: stagger(6), ease: 'linear' }, 260)
+  tl.add(
+    shardPos,
+    {
+      x: (_, i) => scene.shards[i].home.x,
+      y: (_, i) => scene.shards[i].home.y,
+      z: (_, i) => scene.shards[i].home.z,
+      duration: 1050,
+      delay: stagger(7),
+      ease: 'outQuint',
+    },
+    300,
+  )
+  tl.add(
+    shardRot,
+    { x: 0, y: 0, z: (_, i) => (i % 2 ? 0.12 : -0.12), duration: 1050, delay: stagger(7), ease: 'outQuint' },
+    300,
+  )
+
+  // 3 — fragments collapse into the letter slots…
+  tl.add(
+    shardPos,
+    {
+      x: (_, i) => scene.shards[i].slot.x,
+      y: (_, i) => scene.shards[i].slot.y,
+      z: (_, i) => scene.shards[i].slot.z,
+      duration: 380,
+      delay: stagger(4),
+      ease: 'inQuad',
+    },
+    1420,
+  )
+  tl.add(
+    scene.shards.map((s) => s.mesh.scale),
+    { x: 0.01, y: 0.01, z: 0.01, duration: 360, delay: stagger(4), ease: 'inQuad' },
+    1460,
+  )
+  tl.add(shardMats, { opacity: 0, duration: 300, delay: stagger(4), ease: 'linear' }, 1520)
+
+  // …and the flat letters land in their place, one direction each
+  const letterPos = scene.letters.map((l) => l.mesh.position)
+  const letterRot = scene.letters.map((l) => l.mesh.rotation)
+  const letterMats = scene.letters.map((l) => l.material)
+  tl.add(letterMats, { opacity: 1, duration: 520, delay: stagger(70), ease: 'linear' }, 1500)
+  tl.add(
+    letterPos,
+    {
+      x: (_, i) => scene.letters[i].final.x,
+      y: (_, i) => scene.letters[i].final.y,
+      z: (_, i) => scene.letters[i].final.z,
+      duration: 1050,
+      delay: stagger(70),
+    },
+    1500,
+  )
+  tl.add(letterRot, { x: 0, y: 0, z: 0, duration: 1050, delay: stagger(70) }, 1500)
+
+  // the axis has done its job
+  tl.add(scene.axis.scale, { x: 0.001, duration: 420, ease: 'inQuint' }, 2350)
+  tl.add(scene.axis.material, { opacity: 0, duration: 380, ease: 'linear' }, 2380)
+
+  // 4 — extrusion pop + red rim flash: the logo becomes an object
+  tl.add(
+    scene.letters.map((l) => l.mesh.scale),
+    { z: 1, duration: 560, delay: stagger(55) },
+    2480,
+  )
+  tl.add(scene.state, { key: 2.4, duration: 900, ease: 'outQuad' }, 1500)
+  tl.add(scene.state, { rim: 2.6, duration: 260, ease: 'outQuad' }, 2520)
+  tl.add(scene.state, { rim: 1.1, duration: 900, ease: 'outQuad' }, 2800)
+
+  // 5 — settle: camera eases back, idle life ramps in, chrome appears
+  tl.add(scene.state, { camZ: 10.6, duration: 1400, ease: 'outQuint' }, 2650)
+  tl.add(scene.state, { idle: 1, duration: 1000, ease: 'outQuad' }, 2900)
+  if (chromeEls.length) {
+    tl.add(
+      chromeEls,
+      { opacity: 1, translateY: '0rem', duration: 700, delay: stagger(90), ease: 'outQuint' },
+      3000,
+    )
+  }
+
+  tl.play()
+
+  return {
+    timeline: tl,
+    skip: () => {
+      tl.pause()
+      scene.setFinalState()
+      utils.set(chromeEls, { opacity: 1, translateY: '0rem' })
+      finish()
+    },
+  }
+}
