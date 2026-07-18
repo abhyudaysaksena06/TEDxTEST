@@ -17,6 +17,12 @@ The background is a custom-shader "stage floor": a disc of points carrying slow
 radial waves outward from the logo — an idea spreading. **Click anywhere on the
 stage to send your own ripple.** Moving the pointer tilts the logo and camera.
 
+**Hover any letter** (or tap it on touch) and it lights up, lifts toward you,
+and reveals a picture inside the glyph — stage, audience, microphone, the x,
+circuitry, an idea, a book, the campus. The art is generated at runtime; to use
+real photos instead, fill the `LETTER_IMAGES` array at the top of
+`src/three/HeroScene.js` with URLs or `/public` paths (one per letter).
+
 - `prefers-reduced-motion` skips straight to the assembled logo with a static floor.
 - A "Skip intro" control fast-forwards the choreography.
 - If WebGL is unavailable, a static typographic hero renders instead.

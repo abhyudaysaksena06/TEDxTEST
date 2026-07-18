@@ -10,6 +10,12 @@ const FINAL_CAM_Z = 10.6
 const LETTER_DEPTH = 0.24
 const TRACKING = 0.09
 
+// Optional photos for the letter-hover reveal, one per letter of TEDxTIET.
+// Drop image URLs (or /public paths) here and they replace the generated
+// poster art automatically, e.g. '/images/speakers.jpg'. Leave '' to keep
+// the built-in art for that letter.
+const LETTER_IMAGES = ['', '', '', '', '', '', '', '']
+
 // The flat sheets applied over the stencil, bottom of the stack first.
 // Each is the exact TEDxTIET letterform carrying its own theme texture —
 // the things the event is made of, applied as layers of the title itself.
@@ -120,6 +126,65 @@ export class HeroScene {
 
     this.#buildRawWord(font, capHeight)
     this.#buildWordLayers(font, capHeight)
+    this.#buildHoverArt(font, capHeight)
+  }
+
+  #buildHoverArt(font, capHeight) {
+    // Hover reveal: each letter carries a hidden picture on its front face,
+    // clipped to the glyph. Hovering lights the letter and fades it in.
+    this.hoverState = this.letters.map(() => ({ t: 0, target: 0, flashUntil: 0 }))
+    this.hoverIndex = -1
+    this.pointerMoved = false
+    this.letterMeshes = []
+
+    this.letters.forEach((l, i) => {
+      l.mesh.userData.letterIndex = i
+      this.letterMeshes.push(l.mesh)
+
+      const shapes = font.generateShapes(WORD[i], 1)
+      const geometry = new THREE.ShapeGeometry(shapes, 8)
+      geometry.computeBoundingBox()
+      const bb = geometry.boundingBox
+      const w = bb.max.x - bb.min.x
+      const h = bb.max.y - bb.min.y
+
+      const texture = this.#makeLetterArtTexture(i)
+      // cover-fit the square art inside the glyph's bounding box
+      const s = Math.max(w, h)
+      texture.repeat.set(1 / s, 1 / s)
+      texture.offset.set(
+        -(bb.min.x - (s - w) / 2) / s,
+        -(bb.min.y - (s - h) / 2) / s,
+      )
+
+      geometry.translate(-bb.min.x - w / 2, -capHeight / 2, 0)
+
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      })
+
+      if (LETTER_IMAGES[i]) {
+        new THREE.TextureLoader().load(LETTER_IMAGES[i], (photo) => {
+          photo.colorSpace = THREE.SRGBColorSpace
+          photo.repeat.copy(texture.repeat)
+          photo.offset.copy(texture.offset)
+          material.map = photo
+          material.needsUpdate = true
+        })
+      }
+      const overlay = new THREE.Mesh(geometry, material)
+      // just proud of the front face (half depth + bevel + clearance)
+      overlay.position.z = LETTER_DEPTH / 2 + 0.02 + 0.006
+      overlay.userData.letterIndex = i
+      l.mesh.add(overlay)
+
+      l.hoverMat = material
+      l.mesh.material.emissive = new THREE.Color(TED_RED)
+      l.mesh.material.emissiveIntensity = 0
+    })
   }
 
   #buildRawWord(font, capHeight) {
@@ -212,6 +277,157 @@ export class HeroScene {
     texture.wrapS = THREE.RepeatWrapping
     texture.wrapT = THREE.RepeatWrapping
     texture.repeat.set(2.6, 2.6)
+    texture.anisotropy = 4
+    return texture
+  }
+
+  #makeLetterArtTexture(index) {
+    // Eight little posters, one per letter — stage, audience, mic, the x,
+    // circuitry, an idea, a book, the campus. Same palette as the stage.
+    const S = 512
+    const canvas = document.createElement('canvas')
+    canvas.width = S
+    canvas.height = S
+    const ctx = canvas.getContext('2d')
+
+    const bg = ctx.createLinearGradient(0, 0, 0, S)
+    bg.addColorStop(0, '#131315')
+    bg.addColorStop(1, '#26080c')
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, S, S)
+
+    const RED = '#eb0028'
+    const CHALK = 'rgba(244, 242, 239, 0.9)'
+
+    const draw = [
+      () => { // T — the spotlight and the round red stage
+        const beam = ctx.createLinearGradient(0, 0, 0, S)
+        beam.addColorStop(0, 'rgba(255, 246, 238, 0.5)')
+        beam.addColorStop(1, 'rgba(255, 246, 238, 0.04)')
+        ctx.fillStyle = beam
+        ctx.beginPath()
+        ctx.moveTo(226, 0); ctx.lineTo(286, 0); ctx.lineTo(400, 400); ctx.lineTo(112, 400)
+        ctx.closePath(); ctx.fill()
+        ctx.fillStyle = RED
+        ctx.beginPath(); ctx.ellipse(256, 400, 150, 34, 0, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#0a0a0a'
+        ctx.fillRect(248, 300, 16, 88)
+        ctx.beginPath(); ctx.arc(256, 286, 22, 0, Math.PI * 2); ctx.fill()
+      },
+      () => { // E — the audience, rows of heads against the glow
+        const glow = ctx.createRadialGradient(256, 150, 20, 256, 150, 320)
+        glow.addColorStop(0, 'rgba(235, 0, 40, 0.55)')
+        glow.addColorStop(1, 'rgba(235, 0, 40, 0)')
+        ctx.fillStyle = glow
+        ctx.fillRect(0, 0, S, S)
+        ctx.fillStyle = '#0a0a0b'
+        for (let row = 0; row < 4; row++) {
+          for (let c = 0; c < 7; c++) {
+            const x = 40 + c * 72 + (row % 2) * 36
+            const y = 300 + row * 58
+            ctx.beginPath(); ctx.arc(x, y, 26 + row * 3, 0, Math.PI * 2); ctx.fill()
+          }
+        }
+      },
+      () => { // D — the microphone
+        ctx.strokeStyle = CHALK
+        ctx.lineWidth = 10
+        ctx.beginPath(); ctx.moveTo(256, 300); ctx.lineTo(256, 430); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(180, 452); ctx.lineTo(332, 452); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(256, 430); ctx.lineTo(256, 452); ctx.stroke()
+        ctx.fillStyle = CHALK
+        ctx.beginPath()
+        ctx.arc(256, 190, 78, Math.PI, 0)
+        ctx.rect(178, 190, 156, 40)
+        ctx.arc(256, 230, 78, 0, Math.PI)
+        ctx.fill()
+        ctx.strokeStyle = RED
+        ctx.lineWidth = 8
+        ctx.beginPath(); ctx.arc(256, 210, 108, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke()
+      },
+      () => { // x — the mark itself
+        ctx.fillStyle = RED
+        ctx.fillRect(0, 0, S, S)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)'
+        ctx.lineWidth = 64
+        ctx.lineCap = 'round'
+        ctx.beginPath(); ctx.moveTo(140, 140); ctx.lineTo(372, 372); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(372, 140); ctx.lineTo(140, 372); ctx.stroke()
+      },
+      () => { // T — circuitry
+        this.#drawTechnologyTile(ctx, S)
+      },
+      () => { // I — the idea
+        const halo = ctx.createRadialGradient(256, 210, 10, 256, 210, 220)
+        halo.addColorStop(0, 'rgba(255, 246, 238, 0.5)')
+        halo.addColorStop(1, 'rgba(255, 246, 238, 0)')
+        ctx.fillStyle = halo
+        ctx.fillRect(0, 0, S, S)
+        ctx.strokeStyle = CHALK
+        ctx.lineWidth = 12
+        ctx.beginPath(); ctx.arc(256, 210, 90, 0.8 * Math.PI, 2.2 * Math.PI); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(203, 282); ctx.lineTo(309, 282); ctx.stroke()
+        ctx.strokeStyle = RED
+        ctx.beginPath(); ctx.moveTo(226, 330); ctx.lineTo(286, 330); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(238, 372); ctx.lineTo(274, 372); ctx.stroke()
+        ctx.strokeStyle = CHALK
+        ctx.lineWidth = 8
+        for (let a = 0; a < 8; a++) {
+          const ang = (a / 8) * Math.PI * 2 - Math.PI / 2
+          if (Math.abs(ang - Math.PI / 2) < 0.6) continue
+          ctx.beginPath()
+          ctx.moveTo(256 + Math.cos(ang) * 128, 210 + Math.sin(ang) * 128)
+          ctx.lineTo(256 + Math.cos(ang) * 168, 210 + Math.sin(ang) * 168)
+          ctx.stroke()
+        }
+      },
+      () => { // E — the open book
+        ctx.fillStyle = CHALK
+        ctx.beginPath()
+        ctx.moveTo(256, 160)
+        ctx.quadraticCurveTo(150, 120, 70, 160)
+        ctx.lineTo(70, 360)
+        ctx.quadraticCurveTo(150, 320, 256, 360)
+        ctx.quadraticCurveTo(362, 320, 442, 360)
+        ctx.lineTo(442, 160)
+        ctx.quadraticCurveTo(362, 120, 256, 160)
+        ctx.fill()
+        ctx.strokeStyle = '#26080c'
+        ctx.lineWidth = 5
+        for (let y = 200; y <= 320; y += 40) {
+          ctx.beginPath(); ctx.moveTo(100, y); ctx.quadraticCurveTo(170, y - 24, 240, y); ctx.stroke()
+          ctx.beginPath(); ctx.moveTo(272, y); ctx.quadraticCurveTo(342, y - 24, 412, y); ctx.stroke()
+        }
+        ctx.strokeStyle = RED
+        ctx.lineWidth = 8
+        ctx.beginPath(); ctx.moveTo(256, 160); ctx.lineTo(256, 360); ctx.stroke()
+      },
+      () => { // T — the campus skyline at dusk
+        const dusk = ctx.createLinearGradient(0, 0, 0, S)
+        dusk.addColorStop(0, '#2b0a10')
+        dusk.addColorStop(0.7, 'rgba(235, 0, 40, 0.4)')
+        dusk.addColorStop(1, '#131315')
+        ctx.fillStyle = dusk
+        ctx.fillRect(0, 0, S, S)
+        ctx.fillStyle = '#0a0a0b'
+        ctx.fillRect(40, 300, 90, 180)
+        ctx.fillRect(160, 260, 70, 220)
+        ctx.fillRect(360, 320, 110, 160)
+        ctx.fillRect(250, 200, 80, 280) // the tower
+        ctx.fillStyle = RED
+        ctx.fillRect(282, 220, 16, 16) // clock
+        ctx.fillStyle = 'rgba(244, 242, 239, 0.5)'
+        for (let fx = 0; fx < 6; fx++) {
+          for (let fy = 0; fy < 4; fy++) {
+            if ((fx + fy) % 2) ctx.fillRect(56 + fx * 24, 320 + fy * 36, 8, 12)
+          }
+        }
+      },
+    ]
+    draw[index % draw.length]()
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
     texture.anisotropy = 4
     return texture
   }
@@ -389,6 +605,7 @@ export class HeroScene {
   setPointer(nx, ny) {
     this.pointer.tx = nx
     this.pointer.ty = ny
+    this.pointerMoved = true
   }
 
   pulseAt(clientX, clientY, rect) {
@@ -397,10 +614,56 @@ export class HeroScene {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     )
     this.raycaster.setFromCamera(ndc, this.camera)
+
+    // tapping a letter lights it up (the touch path to the hover reveal);
+    // tapping the stage sends a ripple
+    const letterHit = this.raycaster.intersectObjects(this.letterMeshes, true)[0]
+    if (letterHit) {
+      const i = letterHit.object.userData.letterIndex
+      if (i !== undefined) this.hoverState[i].flashUntil = this.clock.elapsedTime + 1.6
+      return
+    }
+
     const hit = new THREE.Vector3()
     if (this.raycaster.ray.intersectPlane(this.floorPlane, hit)) {
       this.floor.addPulse(hit.x, hit.z, this.clock.elapsedTime)
     }
+  }
+
+  #updateHover(t) {
+    if (!this.assembled) return
+
+    // which letter is under the pointer?
+    let index = -1
+    if (this.pointerMoved) {
+      this.raycaster.setFromCamera(
+        new THREE.Vector2(this.pointer.tx, -this.pointer.ty),
+        this.camera,
+      )
+      const hit = this.raycaster.intersectObjects(this.letterMeshes, true)[0]
+      if (hit && hit.object.userData.letterIndex !== undefined) {
+        index = hit.object.userData.letterIndex
+      }
+    }
+    if (index !== this.hoverIndex) {
+      this.hoverIndex = index
+      this.canvas.style.cursor = index >= 0 ? 'pointer' : ''
+    }
+
+    // ease each letter toward lit/unlit; taps hold the light briefly
+    this.letters.forEach((l, i) => {
+      const hs = this.hoverState[i]
+      hs.target = i === this.hoverIndex || t < hs.flashUntil ? 1 : 0
+      hs.t += (hs.target - hs.t) * (this.reduced ? 1 : 0.14)
+      if (Math.abs(hs.target - hs.t) < 0.001) hs.t = hs.target
+
+      l.hoverMat.opacity = hs.t
+      l.material.emissiveIntensity = 0.5 * hs.t
+      const s = 1 + 0.055 * hs.t
+      l.mesh.scale.x = s
+      l.mesh.scale.y = s
+      l.mesh.position.z = l.final.z + 0.16 * hs.t
+    })
   }
 
   // ————— state —————
@@ -473,6 +736,7 @@ export class HeroScene {
     this.rimRight.intensity = state.rim * 0.8
 
     this.floor.uniforms.uTime.value = t
+    this.#updateHover(t)
 
     if (!this.reduced) {
       const pos = this.dust.geometry.attributes.position
