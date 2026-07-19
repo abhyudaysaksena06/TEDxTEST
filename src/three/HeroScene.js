@@ -247,19 +247,44 @@ export class HeroScene {
   }
 
   #makeScreenSlide(image) {
-    // one letter's picture, centered on the wide projection surface
+    // one letter's picture filling the whole space behind the stage: the
+    // same photo blur-filled edge to edge, sharp in the center, edges
+    // falling into darkness so it reads as projection light, not a screen
     const { canvas, ctx } = this.#screenCanvasBase()
-    const size = 430
-    const x = (2048 - size) / 2
-    const y = (512 - size) / 2
+
     ctx.save()
-    ctx.shadowColor = 'rgba(235, 0, 40, 0.5)'
-    ctx.shadowBlur = 60
-    ctx.drawImage(image, x, y, size, size)
+    ctx.filter = 'blur(26px)'
+    ctx.globalAlpha = 0.8
+    // cover-fill the wide wall with the square image
+    const scale = Math.max(2048 / image.width, 512 / image.height)
+    const w = image.width * scale
+    const h = image.height * scale
+    ctx.drawImage(image, (2048 - w) / 2, (512 - h) / 2, w, h)
     ctx.restore()
-    ctx.strokeStyle = 'rgba(244, 242, 239, 0.16)'
-    ctx.lineWidth = 3
-    ctx.strokeRect(x - 6, y - 6, size + 12, size + 12)
+
+    // the sharp picture, nearly full height, its edges feathered so it
+    // melts into the blurred fill with no visible boundary
+    const size = 486
+    const sharp = document.createElement('canvas')
+    sharp.width = sharp.height = size
+    const sctx = sharp.getContext('2d')
+    sctx.drawImage(image, 0, 0, size, size)
+    const mask = sctx.createRadialGradient(size / 2, size / 2, size * 0.28, size / 2, size / 2, size * 0.62)
+    mask.addColorStop(0, 'rgba(0, 0, 0, 1)')
+    mask.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    sctx.globalCompositeOperation = 'destination-in'
+    sctx.fillStyle = mask
+    sctx.fillRect(0, 0, size, size)
+    ctx.drawImage(sharp, (2048 - size) / 2, (512 - size) / 2)
+
+    // let the edges fall away into the dark
+    const fade = ctx.createLinearGradient(0, 0, 2048, 0)
+    fade.addColorStop(0, 'rgba(5, 5, 5, 0.9)')
+    fade.addColorStop(0.22, 'rgba(5, 5, 5, 0)')
+    fade.addColorStop(0.78, 'rgba(5, 5, 5, 0)')
+    fade.addColorStop(1, 'rgba(5, 5, 5, 0.9)')
+    ctx.fillStyle = fade
+    ctx.fillRect(0, 0, 2048, 512)
 
     const texture = new THREE.CanvasTexture(canvas)
     texture.colorSpace = THREE.SRGBColorSpace
@@ -273,10 +298,10 @@ export class HeroScene {
 
   #makeIdleScreenTexture() {
     const { canvas, ctx } = this.#screenCanvasBase()
-    ctx.font = '700 200px "Archivo Variable", "Helvetica Neue", Helvetica, Arial, sans-serif'
+    ctx.font = '700 240px "Archivo Variable", "Helvetica Neue", Helvetica, Arial, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillStyle = 'rgba(235, 0, 40, 0.14)'
+    ctx.fillStyle = 'rgba(235, 0, 40, 0.13)'
     ctx.fillText('TEDxTIET', 1024, 262)
 
     const texture = new THREE.CanvasTexture(canvas)
@@ -292,9 +317,11 @@ export class HeroScene {
     // The curved 3D projector screen closing the back of the stage: a
     // cylindrical arc behind the deck's semi-oval, idle-branded, that
     // projects whichever letter picture is being hovered.
+    // the wall spans the whole space behind the stage: past both sides of
+    // the viewport and from the floor to above the top of the frame
     const RADIUS = 20
-    const HEIGHT = 7.6
-    const ARC = 1.9
+    const HEIGHT = 14.5
+    const ARC = 2.6
     const floorY = -1.78
 
     const geometry = new THREE.CylinderGeometry(
