@@ -7,6 +7,8 @@ import { createRippleFloor } from './rippleFloor.js'
 const WORD = 'TEDxTIET'
 const TED_RED = 0xeb0028
 const FINAL_CAM_Z = 10.6
+const LOGO_Z = -3 // the word stands behind the carpet, like the reference
+const FLOOR_Y = -1.74
 const LETTER_DEPTH = 0.24
 const TRACKING = 0.09
 
@@ -38,7 +40,7 @@ export class HeroScene {
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 60)
 
     // Values the anime.js timeline drives; the render loop reads them.
-    this.state = { camZ: 9, camY: 1.05, rim: 0, key: 0, idle: 0, stage: 0 }
+    this.state = { camZ: 9, camY: 1.5, rim: 0, key: 0, idle: 0, stage: 0 }
 
     // Live-tunable effect intensities (the ?tune panel edits these).
     this.tuning = {
@@ -64,6 +66,8 @@ export class HeroScene {
     this.#buildFloor()
     this.#buildStage()
     this.#buildScreen()
+    this.#buildCurtains()
+    this.#buildDecor()
     this.#buildCrowd()
     this.#buildSpotlight()
     this.#buildDust()
@@ -91,6 +95,7 @@ export class HeroScene {
     // rig: idle float + pointer parallax. Everything inside is owned by the
     // intro timeline, so the two motion systems never fight.
     this.rig = new THREE.Group()
+    this.rig.position.z = LOGO_Z
     this.logo = new THREE.Group()
     this.rig.add(this.logo)
     this.scene.add(this.rig)
@@ -323,12 +328,12 @@ export class HeroScene {
     // The curved 3D projector screen closing the back of the stage: a
     // cylindrical arc behind the deck's semi-oval, idle-branded, that
     // projects whichever letter picture is being hovered.
-    // the wall spans the whole space behind the stage: past both sides of
-    // the viewport and from the floor to above the top of the frame
+    // a wide band across the top of the frame, like the reference: its
+    // bottom edge sits above the standing wordmark, curtains fill below
     const RADIUS = 20
-    const HEIGHT = 14.5
-    const ARC = 2.6
-    const floorY = -1.78
+    const HEIGHT = 9.2
+    const ARC = 2.4
+    const BOTTOM = 1.1 // the screen band starts above the standing word
 
     const geometry = new THREE.CylinderGeometry(
       RADIUS, RADIUS, HEIGHT, 64, 1, true,
@@ -343,7 +348,7 @@ export class HeroScene {
       depthWrite: false,
     })
     this.screenBase = new THREE.Mesh(geometry, this.screenBaseMat)
-    this.screenBase.position.set(0, floorY + HEIGHT / 2, 4)
+    this.screenBase.position.set(0, BOTTOM + HEIGHT / 2, 4)
 
     this.screenImageMat = new THREE.MeshBasicMaterial({
       map: null,
@@ -805,9 +810,9 @@ export class HeroScene {
       transparent: true,
       opacity: 0,
     })
-    this.carpet = new THREE.Mesh(new THREE.CircleGeometry(3.4, 72), this.carpetMat)
+    this.carpet = new THREE.Mesh(new THREE.CircleGeometry(3.0, 72), this.carpetMat)
     this.carpet.rotation.x = -Math.PI / 2
-    this.carpet.position.set(0, floorY, 0)
+    this.carpet.position.set(0, floorY, 0.9)
 
     this.ringMat = new THREE.MeshBasicMaterial({
       color: TED_RED,
@@ -817,9 +822,9 @@ export class HeroScene {
       depthWrite: false,
       side: THREE.DoubleSide,
     })
-    this.ring = new THREE.Mesh(new THREE.RingGeometry(3.42, 3.72, 72), this.ringMat)
+    this.ring = new THREE.Mesh(new THREE.RingGeometry(3.02, 3.3, 72), this.ringMat)
     this.ring.rotation.x = -Math.PI / 2
-    this.ring.position.set(0, floorY + 0.005, 0)
+    this.ring.position.set(0, floorY + 0.005, 0.9)
 
     const shadowCanvas = document.createElement('canvas')
     shadowCanvas.width = shadowCanvas.height = 256
@@ -839,8 +844,8 @@ export class HeroScene {
     })
     this.shadow = new THREE.Mesh(new THREE.CircleGeometry(2.6, 48), this.shadowMat)
     this.shadow.rotation.x = -Math.PI / 2
-    this.shadow.position.set(0, floorY + 0.01, 0)
-    this.shadow.scale.set(1.6, 1, 1) // stretched under the wide word
+    this.shadow.position.set(0, floorY + 0.01, LOGO_Z)
+    this.shadow.scale.set(2.1, 1, 1) // stretched under the wide standing word
 
     // a faint backlight at the rear of the stage, behind the word — just
     // enough to lift the horizon out of pure black
@@ -915,48 +920,191 @@ export class HeroScene {
     return texture
   }
 
+  #makeCurtainTexture() {
+    // dark stage drapes: vertical folds with faint warm side washes
+    const canvas = document.createElement('canvas')
+    canvas.width = 1024
+    canvas.height = 256
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#0b0a0a'
+    ctx.fillRect(0, 0, 1024, 256)
+    for (let x = 0; x < 1024; x += 4) {
+      const fold = Math.sin(x * 0.11) * 0.5 + Math.sin(x * 0.023) * 0.5
+      ctx.fillStyle = `rgba(255, 240, 225, ${Math.max(0, fold) * 0.045})`
+      ctx.fillRect(x, 0, 4, 256)
+      ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, -fold) * 0.35})`
+      ctx.fillRect(x, 0, 4, 256)
+    }
+    // warm wash left, deep red wash right — like the reference lighting
+    const left = ctx.createLinearGradient(0, 0, 360, 0)
+    left.addColorStop(0, 'rgba(214, 110, 40, 0.16)')
+    left.addColorStop(1, 'rgba(214, 110, 40, 0)')
+    ctx.fillStyle = left
+    ctx.fillRect(0, 0, 360, 256)
+    const right = ctx.createLinearGradient(1024, 0, 660, 0)
+    right.addColorStop(0, 'rgba(235, 0, 40, 0.1)')
+    right.addColorStop(1, 'rgba(235, 0, 40, 0)')
+    ctx.fillStyle = right
+    ctx.fillRect(660, 0, 364, 256)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.wrapS = THREE.RepeatWrapping
+    texture.repeat.x = 3
+    return texture
+  }
+
+  #buildCurtains() {
+    // the background behind the stage: a drape band under the screen and
+    // two tall curtain legs framing the sides
+    const texture = this.#makeCurtainTexture()
+    this.curtainMats = []
+
+    const makeCurtain = (radius, height, thetaStart, thetaLength, y) => {
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        fog: false,
+        depthWrite: false,
+      })
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius, height, 48, 1, true, thetaStart, thetaLength),
+        material,
+      )
+      mesh.position.set(0, y, 4)
+      this.curtainMats.push(material)
+      this.scene.add(mesh)
+      return mesh
+    }
+
+    // lower band from stage floor up to the screen's bottom edge
+    makeCurtain(19.4, 3.1, Math.PI - 1.35, 2.7, FLOOR_Y + 1.5)
+    // side legs, full height
+    makeCurtain(19.1, 13, Math.PI - 1.5, 0.34, 4.6)
+    makeCurtain(19.1, 13, Math.PI + 1.16, 0.34, 4.6)
+  }
+
+  #buildDecor() {
+    // stage dressing: red prop blocks at the wings, monitors at the lip,
+    // warm uplights along the curtain base
+    this.decorMats = []
+
+    const block = (size, height, x, z, rotY) => {
+      const material = new THREE.MeshStandardMaterial({
+        color: TED_RED,
+        roughness: 0.5,
+        metalness: 0,
+        emissive: TED_RED,
+        emissiveIntensity: 0.14,
+        transparent: true,
+        opacity: 0,
+      })
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(size, height, size), material)
+      mesh.position.set(x, FLOOR_Y + height / 2, z)
+      mesh.rotation.y = rotY
+      this.decorMats.push(material)
+      this.scene.add(mesh)
+    }
+    block(0.95, 0.95, -6.1, 0.9, 0.4)
+    block(0.55, 1.45, -6.9, 1.8, -0.2)
+    block(0.85, 0.85, 6.2, 1.0, -0.35)
+    block(0.5, 1.2, 7.0, 1.9, 0.25)
+
+    const monitorGeo = new THREE.BoxGeometry(1.15, 0.3, 0.65)
+    for (const mx of [-2.8, 2.8]) {
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x0e0e10,
+        roughness: 0.7,
+        transparent: true,
+        opacity: 0,
+      })
+      const monitor = new THREE.Mesh(monitorGeo, material)
+      monitor.position.set(mx, FLOOR_Y + 0.15, 2.3)
+      monitor.rotation.x = -0.3
+      monitor.rotation.y = mx > 0 ? -0.35 : 0.35
+      this.decorMats.push(material)
+      this.scene.add(monitor)
+    }
+
+    // uplights washing the curtain base
+    const glowCanvas = document.createElement('canvas')
+    glowCanvas.width = glowCanvas.height = 128
+    const gctx = glowCanvas.getContext('2d')
+    const gg = gctx.createRadialGradient(64, 64, 4, 64, 64, 64)
+    gg.addColorStop(0, 'rgba(230, 140, 60, 0.55)')
+    gg.addColorStop(1, 'rgba(230, 140, 60, 0)')
+    gctx.fillStyle = gg
+    gctx.fillRect(0, 0, 128, 128)
+    const glowTexture = new THREE.CanvasTexture(glowCanvas)
+    this.uplightMats = []
+    for (const ux of [-11, -5.5, 5.5, 11]) {
+      const material = new THREE.MeshBasicMaterial({
+        map: glowTexture,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+      })
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2), material)
+      glow.position.set(ux, -0.7, -13.8)
+      this.uplightMats.push(material)
+      this.scene.add(glow)
+    }
+  }
+
   #buildCrowd() {
-    // A sparse audience in the pit before the stage: dark head-and-shoulder
-    // silhouettes in loose arcs, some seats empty, each with a tiny sway.
-    this.crowdMat = new THREE.MeshBasicMaterial({
-      color: 0x0c0e13,
-      transparent: true,
-      opacity: 0,
-    })
-    const headGeo = new THREE.SphereGeometry(0.16, 12, 10)
-    const bodyGeo = new THREE.SphereGeometry(0.3, 12, 10)
+    // The audience in the pit: seated silhouettes with torso, shoulders and
+    // head, screen-lit in varied blue-greys like the reference, in loose
+    // arcs with some seats empty, each person swaying faintly.
+    const tones = [0x0a0c12, 0x0d1018, 0x10141f, 0x131826, 0x0b0e14]
+    this.crowdMats = tones.map(
+      (color) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0 }),
+    )
+    const headGeo = new THREE.SphereGeometry(0.155, 14, 12)
+    const torsoGeo = new THREE.SphereGeometry(0.34, 14, 12)
+    const shoulderGeo = new THREE.SphereGeometry(0.16, 10, 8)
 
     const rnd = (seed => () => {
       seed = (seed * 16807) % 2147483647
       return seed / 2147483647
-    })(1234)
+    })(97531)
 
     const rows = [
-      { z: 3.9, count: 9, span: 8.6, baseY: -1.64 },
-      { z: 5.0, count: 7, span: 7.6, baseY: -1.52 },
-      { z: 6.0, count: 4, span: 6.6, baseY: -1.42 },
+      { z: 3.9, count: 11, span: 10.4, baseY: -1.66 },
+      { z: 4.9, count: 8, span: 9.0, baseY: -1.54 },
+      { z: 5.9, count: 5, span: 7.4, baseY: -1.44 },
     ]
 
     this.crowd = []
     const group = new THREE.Group()
     rows.forEach((row) => {
       for (let i = 0; i < row.count; i++) {
-        if (rnd() < 0.2) continue // empty seats — a sparser house
-        const s = 1.0 + rnd() * 0.3
-        const x = -row.span / 2 + (row.span * i) / (row.count - 1) + (rnd() - 0.5) * 0.5
+        if (rnd() < 0.16) continue // empty seats — a sparser house
+        const material = this.crowdMats[Math.floor(rnd() * this.crowdMats.length)]
+        const s = 0.95 + rnd() * 0.3
+        const x = -row.span / 2 + (row.span * i) / (row.count - 1) + (rnd() - 0.5) * 0.45
         const baseY = row.baseY + rnd() * 0.1
         const person = new THREE.Group()
 
-        const body = new THREE.Mesh(bodyGeo, this.crowdMat)
-        body.scale.set(s, s * 0.72, s * 0.8)
-        body.position.y = 0
-        const head = new THREE.Mesh(headGeo, this.crowdMat)
-        head.scale.setScalar(s)
-        head.position.set((rnd() - 0.5) * 0.06, 0.34 * s, 0)
+        const torso = new THREE.Mesh(torsoGeo, material)
+        torso.scale.set(s * 0.94, s * 0.8, s * 0.7)
+        const shoulderL = new THREE.Mesh(shoulderGeo, material)
+        shoulderL.position.set(-0.3 * s, 0.14 * s, 0)
+        shoulderL.scale.set(s, s * 0.8, s * 0.8)
+        const shoulderR = shoulderL.clone()
+        shoulderR.position.x = 0.3 * s
+        const head = new THREE.Mesh(headGeo, material)
+        head.position.set((rnd() - 0.5) * 0.08, 0.44 * s, (rnd() - 0.5) * 0.05)
+        head.scale.set(s * 0.92, s * 1.06, s * 0.96)
+        head.rotation.z = (rnd() - 0.5) * 0.24 // tilted heads, listening
 
-        person.add(body, head)
+        person.add(torso, shoulderL, shoulderR, head)
         person.position.set(x, baseY, row.z + (rnd() - 0.5) * 0.5)
         person.rotation.y = (rnd() - 0.5) * 0.5
+        person.rotation.x = (rnd() - 0.5) * 0.1 // a slight lean
         group.add(person)
         this.crowd.push({ person, baseY, phase: rnd() * Math.PI * 2, amp: 0.006 + rnd() * 0.012 })
       }
@@ -1144,12 +1292,18 @@ export class HeroScene {
     this.floor.uniforms.uPixelRatio.value = dpr
 
     // The wordmark occupies 85% of the viewport width (92% on portrait
-    // screens where anything less renders it illegibly small).
+    // screens where anything less renders it illegibly small), measured at
+    // its own depth behind the carpet.
     const fraction = w / h < 0.9 ? 0.92 : 0.85
     const visibleWidth =
-      2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * FINAL_CAM_Z * this.camera.aspect
+      2 *
+      Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) *
+      (FINAL_CAM_Z - LOGO_Z) *
+      this.camera.aspect
     this.rigScale = (visibleWidth * fraction) / this.logoWidth
     this.rig.scale.setScalar(this.rigScale)
+    // standing on the stage floor, with a whisper of air underneath
+    this.standY = FLOOR_Y + 0.355 * this.rigScale + 0.08
   }
 
   // ————— loop —————
@@ -1171,7 +1325,7 @@ export class HeroScene {
     // the whole word tilts as one element, pushed away where the cursor is
     this.rig.rotation.y = this.pointer.x * tuning.turnY * idle + Math.sin(t * 0.32) * 0.035 * idle
     this.rig.rotation.x = this.pointer.y * tuning.turnX * idle + Math.sin(t * 0.21) * 0.015 * idle
-    this.rig.position.y = bob * tuning.floatAmp * this.rigScale * idle
+    this.rig.position.y = this.standY + bob * tuning.floatAmp * this.rigScale * idle
 
     // the stage breathes with the float: ring glow pulses, the contact
     // shadow tightens and lightens as the word rises
@@ -1189,8 +1343,11 @@ export class HeroScene {
     this.screenBaseMat.opacity = stage * tuning.screenGlow * (1 - this.screenFade * 0.75)
     this.screenImageMat.opacity = stage * tuning.screenGlow * this.screenFade
 
-    // the audience settles in with the stage, each person swaying faintly
-    this.crowdMat.opacity = stage * 0.94
+    // curtains, decoration, and audience settle in with the stage
+    for (const m of this.curtainMats) m.opacity = stage * 0.96
+    for (const m of this.decorMats) m.opacity = stage
+    for (const m of this.uplightMats) m.opacity = stage * (0.12 + 0.02 * Math.sin(t * 0.5))
+    for (const m of this.crowdMats) m.opacity = stage * 0.95
     if (!this.reduced) {
       for (const c of this.crowd) {
         c.person.position.y = c.baseY + Math.sin(t * 0.7 + c.phase) * c.amp
@@ -1210,7 +1367,7 @@ export class HeroScene {
     this.poolMat.opacity = 0.16 * spotStrength
 
     this.camera.position.set(this.pointer.x * 0.18 * idle, state.camY, state.camZ)
-    this.camera.lookAt(0, -0.18, 0)
+    this.camera.lookAt(0, -0.45, 0)
 
     this.keyLight.intensity = state.key
     this.rimLeft.intensity = state.rim
