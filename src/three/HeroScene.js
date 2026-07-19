@@ -610,9 +610,11 @@ export class HeroScene {
     // The big deck: a half-oval platform wider than the screen, flat edge
     // toward the audience, with the red carpet at its center and a glowing
     // red border tracing its back curve.
-    const DECK_RX = 17
-    const DECK_RZ = 9
-    const DECK_FRONT_Z = 2.6
+    // deep enough that the word stands well inside the platform — the back
+    // edge sits far behind it, not at its feet
+    const DECK_RX = 24
+    const DECK_RZ = 16
+    const DECK_FRONT_Z = 3.2
     const deckShape = new THREE.Shape()
     deckShape.absellipse(0, 0, DECK_RX, DECK_RZ, Math.PI, 0, true)
     deckShape.closePath()
