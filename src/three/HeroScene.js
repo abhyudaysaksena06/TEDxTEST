@@ -119,10 +119,19 @@ export class HeroScene {
       // naturally, sharing one vertical center so the baseline stays true
       geometry.translate(-bb.min.x - width / 2, -capHeight / 2, -LETTER_DEPTH / 2)
 
-      const material = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        metalness: 0.18,
-        roughness: 0.34,
+      // TEDx in red, TIET in white — frosted glass blocks, lit from inside
+      const isRed = i < 4
+      const material = new THREE.MeshPhysicalMaterial({
+        color: isRed ? 0xeb0028 : 0xffffff,
+        emissive: isRed ? 0xff1638 : 0xfff3ec,
+        emissiveIntensity: 0,
+        metalness: 0,
+        roughness: 0.28,
+        transmission: 0.5,
+        thickness: 0.6,
+        ior: 1.45,
+        clearcoat: 0.7,
+        clearcoatRoughness: 0.22,
         transparent: true,
         opacity: 0,
       })
@@ -131,7 +140,7 @@ export class HeroScene {
       const final = { x: cursor + width / 2, y: 0, z: 0 }
       cursor += width + TRACKING
 
-      this.letters.push({ mesh, material, final, geometry, uvBounds })
+      this.letters.push({ mesh, material, final, geometry, uvBounds, isRed })
       this.logo.add(mesh)
     }
 
@@ -213,8 +222,6 @@ export class HeroScene {
       l.mesh.add(overlay)
 
       l.hoverMat = material
-      l.mesh.material.emissive = new THREE.Color(TED_RED)
-      l.mesh.material.emissiveIntensity = 0
     })
   }
 
@@ -962,9 +969,11 @@ export class HeroScene {
 
       l.hoverMat.opacity = hs.t
       l.hoverMat.emissiveIntensity = hoverGlow * hs.t
-      // a minimal light always lives inside the blocks; hover raises it
+      // the glass is always luminous from inside; hover turns it up
       // to obvious-but-restrained
-      l.material.emissiveIntensity = 0.07 + 0.23 * hs.t
+      const idleGlow = l.isRed ? 0.34 : 0.2
+      const hoverPeak = l.isRed ? 0.62 : 0.46
+      l.material.emissiveIntensity = idleGlow + (hoverPeak - idleGlow) * hs.t
     })
 
     // sync the projector: the hovered letter's picture appears on the
