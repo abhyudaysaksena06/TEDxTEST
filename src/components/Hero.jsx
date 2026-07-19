@@ -109,7 +109,7 @@ export default function Hero() {
           <span className="text-chalk"> Ideas find a stage in Patiala.</span>
         </p>
         <p ref={bottomRightRef} className="chrome-reveal hidden shrink-0 text-sm text-smoke md:block">
-          {introDone ? 'Hover a letter · click the stage for a ripple' : ' '}
+          {introDone ? 'Your cursor is the spotlight · hover a letter' : ' '}
         </p>
       </footer>
 

@@ -17,6 +17,7 @@ const CONTROLS = [
   { key: 'hoverGlow', label: 'Hover photo glow', min: 0, max: 1, step: 0.02 },
   { key: 'stageBorder', label: 'Stage border glow', min: 0, max: 1, step: 0.02 },
   { key: 'screenGlow', label: 'Projector screen', min: 0, max: 1, step: 0.02 },
+  { key: 'spotlight', label: 'Cursor spotlight', min: 0, max: 2, step: 0.05 },
 ]
 
 export default function TunePanel({ scene, onClose }) {

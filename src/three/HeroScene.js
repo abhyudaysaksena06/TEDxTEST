@@ -7,6 +7,7 @@ import { createRippleFloor } from './rippleFloor.js'
 const WORD = 'TEDxTIET'
 const TED_RED = 0xeb0028
 const FINAL_CAM_Z = 10.6
+const UP = new THREE.Vector3(0, 1, 0)
 const LETTER_DEPTH = 0.24
 const TRACKING = 0.09
 
@@ -51,15 +52,21 @@ export class HeroScene {
       hoverGlow: 0.38, // photo emissive strength on hover
       stageBorder: 0.45, // glow of the big deck's back-edge border
       screenGlow: 0.85, // projector screen brightness
+      spotlight: 1, // strength of the cursor followspot
     }
 
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 }
+
+    this.tmpA = new THREE.Vector3()
+    this.tmpB = new THREE.Vector3()
 
     this.#buildLights()
     this.#buildLogo()
     this.#buildFloor()
     this.#buildStage()
     this.#buildScreen()
+    this.#buildCrowd()
+    this.#buildSpotlight()
     this.#buildDust()
 
     this.resize()
@@ -909,6 +916,105 @@ export class HeroScene {
     return texture
   }
 
+  #buildCrowd() {
+    // A sparse audience in the pit before the stage: dark head-and-shoulder
+    // silhouettes in loose arcs, some seats empty, each with a tiny sway.
+    this.crowdMat = new THREE.MeshBasicMaterial({
+      color: 0x0c0e13,
+      transparent: true,
+      opacity: 0,
+    })
+    const headGeo = new THREE.SphereGeometry(0.16, 12, 10)
+    const bodyGeo = new THREE.SphereGeometry(0.3, 12, 10)
+
+    const rnd = (seed => () => {
+      seed = (seed * 16807) % 2147483647
+      return seed / 2147483647
+    })(1234)
+
+    const rows = [
+      { z: 3.9, count: 9, span: 8.6, baseY: -1.64 },
+      { z: 5.0, count: 7, span: 7.6, baseY: -1.52 },
+      { z: 6.0, count: 4, span: 6.6, baseY: -1.42 },
+    ]
+
+    this.crowd = []
+    const group = new THREE.Group()
+    rows.forEach((row) => {
+      for (let i = 0; i < row.count; i++) {
+        if (rnd() < 0.2) continue // empty seats — a sparser house
+        const s = 1.0 + rnd() * 0.3
+        const x = -row.span / 2 + (row.span * i) / (row.count - 1) + (rnd() - 0.5) * 0.5
+        const baseY = row.baseY + rnd() * 0.1
+        const person = new THREE.Group()
+
+        const body = new THREE.Mesh(bodyGeo, this.crowdMat)
+        body.scale.set(s, s * 0.72, s * 0.8)
+        body.position.y = 0
+        const head = new THREE.Mesh(headGeo, this.crowdMat)
+        head.scale.setScalar(s)
+        head.position.set((rnd() - 0.5) * 0.06, 0.34 * s, 0)
+
+        person.add(body, head)
+        person.position.set(x, baseY, row.z + (rnd() - 0.5) * 0.5)
+        person.rotation.y = (rnd() - 0.5) * 0.5
+        group.add(person)
+        this.crowd.push({ person, baseY, phase: rnd() * Math.PI * 2, amp: 0.006 + rnd() * 0.012 })
+      }
+    })
+    this.scene.add(group)
+  }
+
+  #buildSpotlight() {
+    // The cursor is the followspot: a real spotlight aimed where the
+    // pointer lands on the stage, with a visible beam and light pool.
+    this.spotSource = new THREE.Vector3(0, 9.5, 8.5)
+
+    this.spot = new THREE.SpotLight(0xfff1dd, 0)
+    this.spot.angle = 0.42
+    this.spot.penumbra = 0.75
+    this.spot.distance = 45
+    this.spot.decay = 0
+    this.spot.position.copy(this.spotSource)
+    this.spotTarget = new THREE.Object3D()
+    this.spot.target = this.spotTarget
+
+    const poolCanvas = document.createElement('canvas')
+    poolCanvas.width = poolCanvas.height = 256
+    const pctx = poolCanvas.getContext('2d')
+    const pg = pctx.createRadialGradient(128, 128, 8, 128, 128, 128)
+    pg.addColorStop(0, 'rgba(255, 243, 220, 0.55)')
+    pg.addColorStop(0.6, 'rgba(255, 243, 220, 0.16)')
+    pg.addColorStop(1, 'rgba(255, 243, 220, 0)')
+    pctx.fillStyle = pg
+    pctx.fillRect(0, 0, 256, 256)
+    const poolTexture = new THREE.CanvasTexture(poolCanvas)
+    this.poolMat = new THREE.MeshBasicMaterial({
+      map: poolTexture,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+    this.pool = new THREE.Mesh(new THREE.CircleGeometry(1.7, 40), this.poolMat)
+    this.pool.rotation.x = -Math.PI / 2
+    this.pool.position.set(0, -1.72, 0)
+
+    this.beamMat = new THREE.MeshBasicMaterial({
+      color: 0xfff1dd,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    })
+    // unit-height open cone, scaled to the source-to-pool distance each frame
+    this.beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 1.45, 1, 24, 1, true), this.beamMat)
+
+    this.scene.add(this.spot, this.spotTarget, this.pool, this.beam)
+  }
+
   #buildDust() {
     const count = 200
     const positions = new Float32Array(count * 3)
@@ -1095,6 +1201,32 @@ export class HeroScene {
     // projector: idle branding dims as a projected picture fades in
     this.screenBaseMat.opacity = stage * tuning.screenGlow * (1 - this.screenFade * 0.75)
     this.screenImageMat.opacity = stage * tuning.screenGlow * this.screenFade
+
+    // the audience settles in with the stage, each person swaying faintly
+    this.crowdMat.opacity = stage * 0.94
+    if (!this.reduced) {
+      for (const c of this.crowd) {
+        c.person.position.y = c.baseY + Math.sin(t * 0.7 + c.phase) * c.amp
+      }
+    }
+
+    // the cursor followspot: aim the light where the pointer lands
+    this.raycaster.setFromCamera(this.tmpA.set(this.pointer.x, -this.pointer.y, 0), this.camera)
+    if (this.raycaster.ray.intersectPlane(this.floorPlane, this.tmpB)) {
+      this.tmpB.x = THREE.MathUtils.clamp(this.tmpB.x, -13, 13)
+      this.tmpB.z = THREE.MathUtils.clamp(this.tmpB.z, -12, 9.5)
+      this.pool.position.set(this.tmpB.x, -1.72, this.tmpB.z)
+      this.spotTarget.position.copy(this.tmpB)
+      const dir = this.tmpA.subVectors(this.spotSource, this.tmpB)
+      const len = dir.length()
+      this.beam.scale.set(1, len, 1)
+      this.beam.position.copy(this.tmpB).addScaledVector(dir, 0.5)
+      this.beam.quaternion.setFromUnitVectors(UP, dir.normalize())
+    }
+    const spotStrength = tuning.spotlight * stage
+    this.spot.intensity = 2.6 * spotStrength
+    this.poolMat.opacity = 0.14 * spotStrength
+    this.beamMat.opacity = 0.045 * spotStrength
 
     this.camera.position.set(this.pointer.x * 0.18 * idle, state.camY, state.camZ)
     this.camera.lookAt(0, -0.18, 0)
