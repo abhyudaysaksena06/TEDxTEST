@@ -48,7 +48,7 @@ export class HeroScene {
       floatAmp: 0.06, // levitation bob amplitude
       backGlow: 0.15, // rear backlight opacity
       ringGlow: 0.16, // carpet edge glow opacity
-      hoverTilt: 0.11, // per-letter tilt on hover (rad)
+      hoverTilt: 0.16, // per-letter cursor-tracking tilt (rad)
       hoverGlow: 0.38, // photo emissive strength on hover
       stageBorder: 0.45, // glow of the big deck's back-edge border
     }
@@ -598,6 +598,7 @@ export class HeroScene {
     this.floor = createRippleFloor({ y: -1.75, maxRadius: 15 })
     this.scene.add(this.floor.points)
     this.floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 1.75)
+    this.logoPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
     this.raycaster = new THREE.Raycaster()
   }
 
@@ -820,8 +821,10 @@ export class HeroScene {
   #updateHover(t) {
     if (!this.assembled) return
 
-    // which letter is under the pointer?
+    // which letter is under the pointer, and where the pointer sits on the
+    // word's plane in logo-local coordinates (for the tracking tilt)
     let index = -1
+    let local = null
     if (this.pointerMoved) {
       this.raycaster.setFromCamera(
         new THREE.Vector2(this.pointer.tx, -this.pointer.ty),
@@ -831,27 +834,49 @@ export class HeroScene {
       if (hit && hit.object.userData.letterIndex !== undefined) {
         index = hit.object.userData.letterIndex
       }
+      const planeHit = new THREE.Vector3()
+      if (this.raycaster.ray.intersectPlane(this.logoPlane, planeHit)) {
+        local = this.logo.worldToLocal(planeHit)
+      }
     }
     if (index !== this.hoverIndex) {
       this.hoverIndex = index
       this.canvas.style.cursor = index >= 0 ? 'pointer' : ''
     }
 
-    // ease each letter toward lit/unlit; taps hold the light briefly
+    const { hoverTilt, hoverGlow } = this.tuning
+    const clamp = THREE.MathUtils.clamp
+
     this.letters.forEach((l, i) => {
+      // photo + glow: ease toward lit/unlit; taps hold the light briefly
       const hs = this.hoverState[i]
       hs.target = i === this.hoverIndex || t < hs.flashUntil ? 1 : 0
       hs.t += (hs.target - hs.t) * (this.reduced ? 1 : 0.14)
       if (Math.abs(hs.target - hs.t) < 0.001) hs.t = hs.target
 
-      // sleek: the picture wraps the whole block and glows from within,
-      // with a quiet red base glow and a slight tilt
-      const { hoverTilt, hoverGlow } = this.tuning
       l.hoverMat.opacity = hs.t
       l.hoverMat.emissiveIntensity = hoverGlow * hs.t
       l.material.emissiveIntensity = 0.22 * hs.t
-      l.mesh.rotation.y = hoverTilt * hs.t
-      l.mesh.rotation.x = -hoverTilt * 0.4 * hs.t
+
+      // cursor-tracking tilt: every letter leans toward the pointer with a
+      // proximity falloff, so a wave of reaction sweeps across the word
+      let tiltY = 0
+      let tiltX = 0
+      let push = 0
+      if (local && !this.reduced) {
+        const dx = local.x - l.final.x
+        const dy = local.y - l.final.y
+        const prox = Math.exp(-(dx * dx) / 3.0)
+        tiltY = clamp(dx, -1.6, 1.6) * hoverTilt * prox
+        tiltX = -clamp(dy, -1.2, 1.2) * hoverTilt * 0.55 * prox
+        push = 0.14 * prox
+      }
+      l.tiltY = (l.tiltY ?? 0) + (tiltY - (l.tiltY ?? 0)) * 0.12
+      l.tiltX = (l.tiltX ?? 0) + (tiltX - (l.tiltX ?? 0)) * 0.12
+      l.push = (l.push ?? 0) + (push - (l.push ?? 0)) * 0.12
+      l.mesh.rotation.y = l.tiltY
+      l.mesh.rotation.x = l.tiltX
+      l.mesh.position.z = l.final.z + l.push
     })
   }
 
