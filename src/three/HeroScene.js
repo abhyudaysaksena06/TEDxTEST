@@ -48,9 +48,9 @@ export class HeroScene {
       floatAmp: 0.06, // levitation bob amplitude
       backGlow: 0.15, // rear backlight opacity
       ringGlow: 0.16, // carpet edge glow opacity
-      hoverTilt: 0.16, // per-letter cursor-tracking tilt (rad)
       hoverGlow: 0.38, // photo emissive strength on hover
       stageBorder: 0.45, // glow of the big deck's back-edge border
+      screenGlow: 0.85, // projector screen brightness
     }
 
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 }
@@ -59,6 +59,7 @@ export class HeroScene {
     this.#buildLogo()
     this.#buildFloor()
     this.#buildStage()
+    this.#buildScreen()
     this.#buildDust()
 
     this.resize()
@@ -157,8 +158,10 @@ export class HeroScene {
     // the reveal reads as a solid printed block, glowing from within.
     this.hoverState = this.letters.map(() => ({ t: 0, target: 0, flashUntil: 0 }))
     this.hoverIndex = -1
+    this.litIndex = -1
     this.pointerMoved = false
     this.letterMeshes = []
+    this.screenSlides = []
 
     this.letters.forEach((l, i) => {
       l.mesh.userData.letterIndex = i
@@ -188,6 +191,9 @@ export class HeroScene {
         polygonOffsetUnits: -1,
       })
 
+      // the matching projection slide for the big screen behind the stage
+      this.screenSlides.push(this.#makeScreenSlide(texture.image))
+
       if (LETTER_IMAGES[i]) {
         new THREE.TextureLoader().load(LETTER_IMAGES[i], (photo) => {
           photo.colorSpace = THREE.SRGBColorSpace
@@ -196,6 +202,8 @@ export class HeroScene {
           material.map = photo
           material.emissiveMap = photo
           material.needsUpdate = true
+          // keep the projector in sync with the real photo
+          this.screenSlides[i] = this.#makeScreenSlide(photo.image)
         })
       }
 
@@ -208,6 +216,108 @@ export class HeroScene {
       l.mesh.material.emissive = new THREE.Color(TED_RED)
       l.mesh.material.emissiveIntensity = 0
     })
+  }
+
+  // ————— the projector screen —————
+
+  #screenCanvasBase() {
+    const canvas = document.createElement('canvas')
+    canvas.width = 2048
+    canvas.height = 512
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#08080a'
+    ctx.fillRect(0, 0, 2048, 512)
+    // soft projector vignette
+    const v = ctx.createRadialGradient(1024, 256, 120, 1024, 256, 1100)
+    v.addColorStop(0, 'rgba(30, 26, 27, 0.55)')
+    v.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = v
+    ctx.fillRect(0, 0, 2048, 512)
+    // scanlines
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.022)'
+    for (let y = 0; y < 512; y += 4) ctx.fillRect(0, y, 2048, 1)
+    return { canvas, ctx }
+  }
+
+  #makeScreenSlide(image) {
+    // one letter's picture, centered on the wide projection surface
+    const { canvas, ctx } = this.#screenCanvasBase()
+    const size = 430
+    const x = (2048 - size) / 2
+    const y = (512 - size) / 2
+    ctx.save()
+    ctx.shadowColor = 'rgba(235, 0, 40, 0.5)'
+    ctx.shadowBlur = 60
+    ctx.drawImage(image, x, y, size, size)
+    ctx.restore()
+    ctx.strokeStyle = 'rgba(244, 242, 239, 0.16)'
+    ctx.lineWidth = 3
+    ctx.strokeRect(x - 6, y - 6, size + 12, size + 12)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.anisotropy = 4
+    // viewed from inside the cylinder, so un-mirror horizontally
+    texture.wrapS = THREE.ClampToEdgeWrapping
+    texture.repeat.x = -1
+    texture.offset.x = 1
+    return texture
+  }
+
+  #makeIdleScreenTexture() {
+    const { canvas, ctx } = this.#screenCanvasBase()
+    ctx.font = '700 200px "Archivo Variable", "Helvetica Neue", Helvetica, Arial, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = 'rgba(235, 0, 40, 0.14)'
+    ctx.fillText('TEDxTIET', 1024, 262)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.anisotropy = 4
+    texture.wrapS = THREE.ClampToEdgeWrapping
+    texture.repeat.x = -1
+    texture.offset.x = 1
+    return texture
+  }
+
+  #buildScreen() {
+    // The curved 3D projector screen closing the back of the stage: a
+    // cylindrical arc behind the deck's semi-oval, idle-branded, that
+    // projects whichever letter picture is being hovered.
+    const RADIUS = 20
+    const HEIGHT = 7.6
+    const ARC = 1.9
+    const floorY = -1.78
+
+    const geometry = new THREE.CylinderGeometry(
+      RADIUS, RADIUS, HEIGHT, 64, 1, true,
+      Math.PI - ARC / 2, ARC,
+    )
+    this.screenBaseMat = new THREE.MeshBasicMaterial({
+      map: this.#makeIdleScreenTexture(),
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      fog: false,
+      depthWrite: false,
+    })
+    this.screenBase = new THREE.Mesh(geometry, this.screenBaseMat)
+    this.screenBase.position.set(0, floorY + HEIGHT / 2, 4)
+
+    this.screenImageMat = new THREE.MeshBasicMaterial({
+      map: null,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      fog: false,
+      depthWrite: false,
+    })
+    this.screenImage = new THREE.Mesh(geometry.clone().scale(0.995, 1, 0.995), this.screenImageMat)
+    this.screenImage.position.copy(this.screenBase.position)
+    this.screenFade = 0
+
+    this.scene.add(this.screenBase, this.screenImage)
   }
 
   #buildRawWord(font, capHeight) {
@@ -598,7 +708,6 @@ export class HeroScene {
     this.floor = createRippleFloor({ y: -1.75, maxRadius: 15 })
     this.scene.add(this.floor.points)
     this.floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 1.75)
-    this.logoPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
     this.raycaster = new THREE.Raycaster()
   }
 
@@ -821,10 +930,9 @@ export class HeroScene {
   #updateHover(t) {
     if (!this.assembled) return
 
-    // which letter is under the pointer, and where the pointer sits on the
-    // word's plane in logo-local coordinates (for the tracking tilt)
+    // which letter is under the pointer? (the word itself is one rigid
+    // element; the whole-rig push tilt happens in the tick)
     let index = -1
-    let local = null
     if (this.pointerMoved) {
       this.raycaster.setFromCamera(
         new THREE.Vector2(this.pointer.tx, -this.pointer.ty),
@@ -834,50 +942,40 @@ export class HeroScene {
       if (hit && hit.object.userData.letterIndex !== undefined) {
         index = hit.object.userData.letterIndex
       }
-      const planeHit = new THREE.Vector3()
-      if (this.raycaster.ray.intersectPlane(this.logoPlane, planeHit)) {
-        local = this.logo.worldToLocal(planeHit)
-      }
     }
     if (index !== this.hoverIndex) {
       this.hoverIndex = index
       this.canvas.style.cursor = index >= 0 ? 'pointer' : ''
     }
 
-    const { hoverTilt, hoverGlow } = this.tuning
-    const clamp = THREE.MathUtils.clamp
+    const { hoverGlow } = this.tuning
+    let lit = this.hoverIndex
 
     this.letters.forEach((l, i) => {
       // photo + glow: ease toward lit/unlit; taps hold the light briefly
       const hs = this.hoverState[i]
-      hs.target = i === this.hoverIndex || t < hs.flashUntil ? 1 : 0
+      const active = i === this.hoverIndex || t < hs.flashUntil
+      if (active && lit === -1) lit = i
+      hs.target = active ? 1 : 0
       hs.t += (hs.target - hs.t) * (this.reduced ? 1 : 0.14)
       if (Math.abs(hs.target - hs.t) < 0.001) hs.t = hs.target
 
       l.hoverMat.opacity = hs.t
       l.hoverMat.emissiveIntensity = hoverGlow * hs.t
-      l.material.emissiveIntensity = 0.22 * hs.t
-
-      // cursor-tracking tilt: every letter leans toward the pointer with a
-      // proximity falloff, so a wave of reaction sweeps across the word
-      let tiltY = 0
-      let tiltX = 0
-      let push = 0
-      if (local && !this.reduced) {
-        const dx = local.x - l.final.x
-        const dy = local.y - l.final.y
-        const prox = Math.exp(-(dx * dx) / 3.0)
-        tiltY = clamp(dx, -1.6, 1.6) * hoverTilt * prox
-        tiltX = -clamp(dy, -1.2, 1.2) * hoverTilt * 0.55 * prox
-        push = 0.14 * prox
-      }
-      l.tiltY = (l.tiltY ?? 0) + (tiltY - (l.tiltY ?? 0)) * 0.12
-      l.tiltX = (l.tiltX ?? 0) + (tiltX - (l.tiltX ?? 0)) * 0.12
-      l.push = (l.push ?? 0) + (push - (l.push ?? 0)) * 0.12
-      l.mesh.rotation.y = l.tiltY
-      l.mesh.rotation.x = l.tiltX
-      l.mesh.position.z = l.final.z + l.push
+      // a minimal light always lives inside the blocks; hover raises it
+      // to obvious-but-restrained
+      l.material.emissiveIntensity = 0.07 + 0.23 * hs.t
     })
+
+    // sync the projector: the hovered letter's picture appears on the
+    // curved screen behind the stage
+    if (lit >= 0 && lit !== this.litIndex) {
+      this.screenImageMat.map = this.screenSlides[lit]
+      this.screenImageMat.needsUpdate = true
+    }
+    this.litIndex = lit
+    const fadeTarget = lit >= 0 ? 1 : 0
+    this.screenFade += (fadeTarget - this.screenFade) * (this.reduced ? 1 : 0.1)
   }
 
   // ————— state —————
@@ -941,9 +1039,9 @@ export class HeroScene {
 
     const bob = Math.sin(t * 0.55)
     const { tuning } = this
-    // the whole word turns to face the cursor
+    // the whole word tilts as one element, pushed away where the cursor is
     this.rig.rotation.y = this.pointer.x * tuning.turnY * idle + Math.sin(t * 0.32) * 0.035 * idle
-    this.rig.rotation.x = -this.pointer.y * tuning.turnX * idle + Math.sin(t * 0.21) * 0.015 * idle
+    this.rig.rotation.x = this.pointer.y * tuning.turnX * idle + Math.sin(t * 0.21) * 0.015 * idle
     this.rig.position.y = bob * tuning.floatAmp * this.rigScale * idle
 
     // the stage breathes with the float: ring glow pulses, the contact
@@ -958,6 +1056,9 @@ export class HeroScene {
     this.deckMat.opacity = stage
     this.borderMat.opacity =
       stage * (this.reduced ? tuning.stageBorder : tuning.stageBorder * (0.85 + 0.15 * Math.sin(t * 0.6)))
+    // projector: idle branding dims as a projected picture fades in
+    this.screenBaseMat.opacity = stage * tuning.screenGlow * (1 - this.screenFade * 0.75)
+    this.screenImageMat.opacity = stage * tuning.screenGlow * this.screenFade
 
     this.camera.position.set(this.pointer.x * 0.18 * idle, state.camY, state.camZ)
     this.camera.lookAt(0, -0.18, 0)

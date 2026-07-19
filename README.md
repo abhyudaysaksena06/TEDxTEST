@@ -21,8 +21,11 @@ The background is a custom-shader "stage floor": a disc of points carrying slow
 radial waves outward from the logo — an idea spreading. **Click anywhere on the
 stage to send your own ripple.** Moving the pointer tilts the logo and camera.
 
-**Hover any letter** (or tap it on touch) and it tilts slightly, takes on a
-quiet red glow, and reveals a picture inside the glyph — stage, audience, microphone, the x,
+The letter blocks carry a faint inner light. **Hover any letter** (or tap it
+on touch) and it glows brighter and reveals a picture wrapped around the whole
+block — and the same picture is projected big on the **curved projector screen**
+closing the back of the stage, in sync. The whole wordmark tilts as one element,
+pushed away where the cursor sits. Pictures — stage, audience, microphone, the x,
 circuitry, an idea, a book, the campus. The art is generated at runtime; to use
 real photos instead, fill the `LETTER_IMAGES` array at the top of
 `src/three/HeroScene.js` with URLs or `/public` paths (one per letter).
