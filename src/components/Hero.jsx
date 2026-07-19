@@ -88,6 +88,16 @@ export default function Hero() {
         <canvas ref={canvasRef} className="stage-canvas" aria-hidden="true" />
       )}
 
+      {/* cinematic vignette over the scene, under the chrome */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(ellipse 105% 90% at 50% 42%, transparent 58%, rgba(0,0,0,0.44) 100%), linear-gradient(to bottom, rgba(0,0,0,0.3), transparent 12%)',
+        }}
+      />
+
       {/* top chrome */}
       <header
         ref={topBarRef}

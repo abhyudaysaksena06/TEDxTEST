@@ -33,6 +33,9 @@ export class HeroScene {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
     this.renderer.setClearColor(0x050505, 1)
+    // cinematic grade: filmic rolloff instead of raw clipping
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.toneMappingExposure = 1.12
 
     this.scene = new THREE.Scene()
     this.scene.fog = new THREE.Fog(0x050505, 14, 30)
@@ -996,7 +999,7 @@ export class HeroScene {
     // the small stair unit to the right of the carpet, like the reference
     const stepMat = () => {
       const material = new THREE.MeshStandardMaterial({
-        color: 0x59564f,
+        color: 0x3a3833,
         roughness: 0.9,
         transparent: true,
         opacity: 0,
@@ -1011,6 +1014,28 @@ export class HeroScene {
     step2.position.set(4.3, FLOOR_Y + 0.12, 1.5)
     step2.rotation.y = -0.2
     this.scene.add(step1, step2)
+
+    // the stage reads as a raised platform: a dark front fascia dropping
+    // to the pit, with a faint edge highlight along the stage lip
+    const fasciaMat = new THREE.MeshBasicMaterial({
+      color: 0x0d0c0c,
+      transparent: true,
+      opacity: 0,
+    })
+    this.decorMats.push(fasciaMat)
+    const fascia = new THREE.Mesh(new THREE.PlaneGeometry(46, 1.0), fasciaMat)
+    fascia.position.set(0, FLOOR_Y - 0.54, 3.21)
+
+    const lipMat = new THREE.MeshBasicMaterial({
+      color: 0x565049,
+      transparent: true,
+      opacity: 0,
+    })
+    this.decorMats.push(lipMat)
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(46, 0.03, 0.03), lipMat)
+    lip.position.set(0, FLOOR_Y - 0.015, 3.22)
+
+    this.scene.add(fascia, lip)
 
     // uplights washing the curtain base
     const glowCanvas = document.createElement('canvas')
@@ -1056,47 +1081,74 @@ export class HeroScene {
       return seed / 2147483647
     })(97531)
 
-    // rows sweep diagonally from the lower-left toward the stage, curved
-    // and banked left like the reference house; the right side thins out
+    // An organized house, like the reference: neat curved rows swept
+    // diagonally from the lower-left, even seating pitch, everyone facing
+    // the carpet, with light sofa backs running behind each row.
+    this.benchMat = new THREE.MeshBasicMaterial({
+      color: 0x151b28,
+      transparent: true,
+      opacity: 0,
+    })
     const rows = [
-      { from: [-8.6, 6.0], to: [3.6, 4.4], count: 11, baseY: -1.5, bow: 0.5 },
-      { from: [-9.4, 5.1], to: [2.8, 3.7], count: 10, baseY: -1.58, bow: 0.4 },
-      { from: [-10.0, 4.4], to: [1.6, 3.4], count: 8, baseY: -1.66, bow: 0.3 },
-      { from: [-10.6, 3.8], to: [-4.4, 3.3], count: 4, baseY: -1.34, bow: 0 }, // raised left bank
+      { from: [-9.2, 6.2], to: [3.8, 4.6], count: 12, baseY: -1.5, bow: 0.55, bench: false },
+      { from: [-9.9, 5.2], to: [3.0, 3.9], count: 11, baseY: -1.58, bow: 0.45, bench: true },
+      { from: [-10.4, 4.4], to: [2.0, 3.5], count: 9, baseY: -1.66, bow: 0.35, bench: true },
+      { from: [-11.0, 3.9], to: [-5.2, 3.3], count: 5, baseY: -1.32, bow: 0.1, bench: true }, // raised left bank
     ]
+    const CARPET = { x: 0, z: 0.9 } // everyone watches the speaker's spot
 
     this.crowd = []
     const group = new THREE.Group()
     rows.forEach((row) => {
+      const rowPoint = (u) => [
+        row.from[0] + (row.to[0] - row.from[0]) * u,
+        row.from[1] + (row.to[1] - row.from[1]) * u + Math.sin(u * Math.PI) * row.bow,
+      ]
       for (let i = 0; i < row.count; i++) {
-        // the left side is dense, the right side thins out
         const u = i / (row.count - 1)
-        if (rnd() < 0.08 + u * 0.3) continue
+        const [x, rowZ] = rowPoint(u)
+
+        // sofa back segment behind this seat, following the row's tangent
+        const [ax, az] = rowPoint(Math.max(0, u - 0.04))
+        const [bx, bz] = rowPoint(Math.min(1, u + 0.04))
+        const tangent = Math.atan2(bx - ax, bz - az)
+        const pitch = Math.hypot(row.to[0] - row.from[0], row.to[1] - row.from[1]) / (row.count - 1)
+        if (row.bench) {
+          const bench = new THREE.Mesh(
+            new THREE.BoxGeometry(pitch * 0.98, 0.26, 0.12),
+            this.benchMat,
+          )
+          bench.position.set(x, row.baseY - 0.08, rowZ + 0.32)
+          bench.rotation.y = tangent + Math.PI / 2
+          group.add(bench)
+        }
+
+        // a few seats stay empty, more toward the right
+        if (rnd() < 0.06 + u * 0.2) continue
+
         const material = this.crowdMats[Math.floor(rnd() * this.crowdMats.length)]
-        const s = 0.95 + rnd() * 0.3
-        const x = row.from[0] + (row.to[0] - row.from[0]) * u + (rnd() - 0.5) * 0.4
-        const rowZ = row.from[1] + (row.to[1] - row.from[1]) * u + Math.sin(u * Math.PI) * row.bow
-        const baseY = row.baseY + rnd() * 0.1
+        const s = 0.98 + rnd() * 0.22
+        const baseY = row.baseY + rnd() * 0.05
         const person = new THREE.Group()
 
         const torso = new THREE.Mesh(torsoGeo, material)
-        torso.scale.set(s * 0.94, s * 0.8, s * 0.7)
+        torso.scale.set(s * 0.82, s * 0.8, s * 0.62)
         const shoulderL = new THREE.Mesh(shoulderGeo, material)
-        shoulderL.position.set(-0.3 * s, 0.14 * s, 0)
-        shoulderL.scale.set(s, s * 0.8, s * 0.8)
+        shoulderL.position.set(-0.27 * s, 0.15 * s, 0)
+        shoulderL.scale.set(s * 0.9, s * 0.75, s * 0.75)
         const shoulderR = shoulderL.clone()
-        shoulderR.position.x = 0.3 * s
+        shoulderR.position.x = 0.27 * s
         const head = new THREE.Mesh(headGeo, material)
-        head.position.set((rnd() - 0.5) * 0.08, 0.44 * s, (rnd() - 0.5) * 0.05)
-        head.scale.set(s * 0.92, s * 1.06, s * 0.96)
-        head.rotation.z = (rnd() - 0.5) * 0.24 // tilted heads, listening
+        head.position.set((rnd() - 0.5) * 0.05, 0.45 * s, 0)
+        head.scale.set(s * 0.9, s * 1.05, s * 0.95)
+        head.rotation.z = (rnd() - 0.5) * 0.14 // subtle head tilts, listening
 
         person.add(torso, shoulderL, shoulderR, head)
-        person.position.set(x, baseY, rowZ + (rnd() - 0.5) * 0.35)
-        person.rotation.y = (rnd() - 0.5) * 0.5
-        person.rotation.x = (rnd() - 0.5) * 0.1 // a slight lean
+        person.position.set(x + (rnd() - 0.5) * 0.08, baseY, rowZ + (rnd() - 0.5) * 0.06)
+        // seated facing the speaker's spot on the carpet
+        person.rotation.y = Math.atan2(CARPET.x - x, CARPET.z - rowZ) + (rnd() - 0.5) * 0.1
         group.add(person)
-        this.crowd.push({ person, baseY, phase: rnd() * Math.PI * 2, amp: 0.006 + rnd() * 0.012 })
+        this.crowd.push({ person, baseY, phase: rnd() * Math.PI * 2, amp: 0.005 + rnd() * 0.009 })
       }
     })
     this.scene.add(group)
@@ -1293,6 +1345,8 @@ export class HeroScene {
     this.rigScale = (visibleWidth * fraction) / this.logoWidth
     this.rig.scale.setScalar(this.rigScale)
     this.rig.position.x = portrait ? 0 : -3.3
+    // the standing word faces the viewer, like real stage letters
+    this.baseYaw = portrait ? 0 : 0.32
     // standing on the stage floor, with a whisper of air underneath
     this.standY = FLOOR_Y + 0.355 * this.rigScale + 0.08
     if (this.shadow) {
@@ -1317,8 +1371,10 @@ export class HeroScene {
 
     const bob = Math.sin(t * 0.55)
     const { tuning } = this
-    // the whole word tilts as one element, pushed away where the cursor is
-    this.rig.rotation.y = this.pointer.x * tuning.turnY * idle + Math.sin(t * 0.32) * 0.035 * idle
+    // the word faces the viewer, and tilts as one element where the
+    // cursor pushes it
+    this.rig.rotation.y =
+      (this.baseYaw ?? 0) + this.pointer.x * tuning.turnY * idle + Math.sin(t * 0.32) * 0.035 * idle
     this.rig.rotation.x = this.pointer.y * tuning.turnX * idle + Math.sin(t * 0.21) * 0.015 * idle
     this.rig.position.y = this.standY + bob * tuning.floatAmp * this.rigScale * idle
 
@@ -1343,6 +1399,7 @@ export class HeroScene {
     for (const m of this.decorMats) m.opacity = stage
     for (const m of this.uplightMats) m.opacity = stage * (0.12 + 0.02 * Math.sin(t * 0.5))
     for (const m of this.crowdMats) m.opacity = stage * 0.95
+    this.benchMat.opacity = stage * 0.6
     if (!this.reduced) {
       for (const c of this.crowd) {
         c.person.position.y = c.baseY + Math.sin(t * 0.7 + c.phase) * c.amp
@@ -1361,8 +1418,12 @@ export class HeroScene {
     this.spot.intensity = 2.6 * spotStrength
     this.poolMat.opacity = 0.16 * spotStrength
 
-    // viewed from back-right of the house, like the reference
-    this.camera.position.set(1.2 + this.pointer.x * 0.18 * idle, state.camY, state.camZ)
+    // viewed from back-right of the house, with a slow cinematic drift
+    this.camera.position.set(
+      1.2 + this.pointer.x * 0.18 * idle + Math.sin(t * 0.11) * 0.2 * idle,
+      state.camY + Math.sin(t * 0.14) * 0.07 * idle,
+      state.camZ,
+    )
     this.camera.lookAt(0, -0.45, 0)
 
     this.keyLight.intensity = state.key

@@ -13,9 +13,10 @@ a dark stage on which the wordmark assembles itself.
    down in reverse.
 3. The finished **white word is applied last**, absorbing the stencil.
 4. The word **extrudes to 3D** as the red rim light flashes on.
-5. The camera eases back and the logo settles, levitating over a TEDx stage —
-   a circular red carpet with a breathing edge glow and a contact shadow that
-   tracks the float — sized to ~85% of the viewport width.
+5. The camera eases back into a full TEDx event scene, viewed from the back
+   of the house: the wordmark standing stage-left facing the audience, the
+   circular red carpet center-stage, a curved projection screen sweeping the
+   top of the frame, curtains, stage steps, and a seated audience below.
 
 The background is a custom-shader "stage floor": a disc of points carrying slow
 radial waves outward from the logo — an idea spreading. **Click anywhere on the
