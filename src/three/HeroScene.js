@@ -7,7 +7,6 @@ import { createRippleFloor } from './rippleFloor.js'
 const WORD = 'TEDxTIET'
 const TED_RED = 0xeb0028
 const FINAL_CAM_Z = 10.6
-const UP = new THREE.Vector3(0, 1, 0)
 const LETTER_DEPTH = 0.24
 const TRACKING = 0.09
 
@@ -1000,19 +999,7 @@ export class HeroScene {
     this.pool.rotation.x = -Math.PI / 2
     this.pool.position.set(0, -1.72, 0)
 
-    this.beamMat = new THREE.MeshBasicMaterial({
-      color: 0xfff1dd,
-      transparent: true,
-      opacity: 0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      fog: false,
-    })
-    // unit-height open cone, scaled to the source-to-pool distance each frame
-    this.beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 1.45, 1, 24, 1, true), this.beamMat)
-
-    this.scene.add(this.spot, this.spotTarget, this.pool, this.beam)
+    this.scene.add(this.spot, this.spotTarget, this.pool)
   }
 
   #buildDust() {
@@ -1217,16 +1204,10 @@ export class HeroScene {
       this.tmpB.z = THREE.MathUtils.clamp(this.tmpB.z, -12, 9.5)
       this.pool.position.set(this.tmpB.x, -1.72, this.tmpB.z)
       this.spotTarget.position.copy(this.tmpB)
-      const dir = this.tmpA.subVectors(this.spotSource, this.tmpB)
-      const len = dir.length()
-      this.beam.scale.set(1, len, 1)
-      this.beam.position.copy(this.tmpB).addScaledVector(dir, 0.5)
-      this.beam.quaternion.setFromUnitVectors(UP, dir.normalize())
     }
     const spotStrength = tuning.spotlight * stage
     this.spot.intensity = 2.6 * spotStrength
-    this.poolMat.opacity = 0.14 * spotStrength
-    this.beamMat.opacity = 0.045 * spotStrength
+    this.poolMat.opacity = 0.16 * spotStrength
 
     this.camera.position.set(this.pointer.x * 0.18 * idle, state.camY, state.camZ)
     this.camera.lookAt(0, -0.18, 0)
