@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { HeroScene } from '../three/HeroScene.js'
 import { buildIntroTimeline } from '../anime/introTimeline.js'
 import TunePanel from './TunePanel.jsx'
+
+gsap.registerPlugin(ScrollTrigger)
 
 export default function Hero() {
   const canvasRef = useRef(null)
@@ -14,7 +18,13 @@ export default function Hero() {
   const [tuneOpen, setTuneOpen] = useState(
     () => typeof window !== 'undefined' && window.location.search.includes('tune'),
   )
+  const [reducedMotion] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
   const introRef = useRef(null)
+  const wrapRef = useRef(null)
 
   useEffect(() => {
     let scene
@@ -36,6 +46,23 @@ export default function Hero() {
       setIntroDone(true)
     } else {
       introRef.current = buildIntroTimeline(scene, chrome, () => setIntroDone(true))
+    }
+
+    // the scroll film: scrubbing the page walks the camera rail
+    let scrollTween
+    if (!reduced && wrapRef.current) {
+      const progress = { p: 0 }
+      scrollTween = gsap.to(progress, {
+        p: 1,
+        ease: 'none',
+        onUpdate: () => scene.setScrollProgress(progress.p),
+        scrollTrigger: {
+          trigger: wrapRef.current,
+          start: 'top top',
+          end: 'bottom bottom',
+          scrub: 0.6,
+        },
+      })
     }
 
     const onResize = () => scene.resize()
@@ -61,6 +88,8 @@ export default function Hero() {
       window.removeEventListener('keydown', onKey)
       canvasRef.current?.removeEventListener('click', onClick)
       introRef.current?.timeline.pause()
+      scrollTween?.scrollTrigger?.kill()
+      scrollTween?.kill()
       scene.dispose()
     }
   }, [])
@@ -71,7 +100,8 @@ export default function Hero() {
   }
 
   return (
-    <section className="relative h-svh min-h-[540px] w-full overflow-hidden bg-stage-deep">
+    <div ref={wrapRef} className="relative" style={{ height: reducedMotion || webglFailed ? '100svh' : '300svh' }}>
+    <section className="sticky top-0 h-svh min-h-[540px] w-full overflow-hidden bg-stage-deep">
       <h1 className="sr-only">TEDxTIET — Thapar Institute of Engineering &amp; Technology, Patiala</h1>
 
       {webglFailed ? (
@@ -119,7 +149,7 @@ export default function Hero() {
           <span className="text-chalk"> Ideas find a stage in Patiala.</span>
         </p>
         <p ref={bottomRightRef} className="chrome-reveal hidden shrink-0 text-sm text-smoke md:block">
-          {introDone ? 'Your cursor is the spotlight · hover a letter' : ' '}
+          {introDone ? 'Scroll — walk the theater · hover a letter' : ' '}
         </p>
       </footer>
 
@@ -137,5 +167,6 @@ export default function Hero() {
         </button>
       )}
     </section>
+    </div>
   )
 }

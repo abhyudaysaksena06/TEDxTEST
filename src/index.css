@@ -17,7 +17,10 @@ body {
   background: var(--color-stage-deep);
   color: var(--color-chalk);
   font-family: var(--font-sans);
-  overflow-x: hidden;
+  /* clip, not hidden: overflow-x:hidden on html/body creates a local
+     scrolling box that breaks position:sticky on descendants (the scroll
+     film's pinned hero section) in every major browser */
+  overflow-x: clip;
 }
 
 ::selection {

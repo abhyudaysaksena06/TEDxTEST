@@ -31,7 +31,35 @@ circuitry, an idea, a book, the campus. The art is generated at runtime; to use
 real photos instead, fill the `LETTER_IMAGES` array at the top of
 `src/three/HeroScene.js` with URLs or `/public` paths (one per letter).
 
-- `prefers-reduced-motion` skips straight to the assembled logo with a static floor.
+**Your cursor is the followspot.** A tracking spotlight (soft floor pool +
+real `SpotLight`) glides wherever you point, damped for a natural lag. Two
+conditions have to be true at once for a bigger reaction: the pointer is over
+a specific audience member, *and* the followspot is actually lighting them
+(distance-to-target under the illumination radius) — only then do they stand
+and applaud, with a crossfade in and out and a cooldown so the house doesn't
+pop up and down erratically. It's a procedural stand-and-clap for now (bob +
+lean + scale-pulse on five to six people at a time); the code is written to
+swap onto skinned `Stand_Up_Clap` animation tracks the moment character
+models are added — see `docs/ENGINEERING_PLAN.md`.
+
+**Scroll to walk the theater.** A GSAP `ScrollTrigger` scrubs the hero's
+pinned 300vh track, riding the camera along a `CatmullRomCurve3` rail (with a
+separate look-at curve, so it never gimbal-twists) from the wide house shot
+down the aisle to a stage-left hero angle on the letters. Pointer parallax
+and idle drift fade out as the rail takes over, so the two motion systems
+never fight. Skipped entirely under reduced motion.
+
+**The projector wall supports live media.** `HeroScene.setScreenMedia({type:
+'image'|'video', src})` swaps the whole backdrop to a real photo or an
+autoplaying muted/looping `<video>` feed — built as two independent code
+paths (not a single component with a conditional hook call) with explicit
+`.dispose()` on the previous texture/video every time media changes, so
+switching sources repeatedly doesn't leak VRAM. Leave `SCREEN_MEDIA` at the
+top of `HeroScene.js` as `null` to keep the hover-driven watermark/slides
+behavior; set it to programmed media to override.
+
+- `prefers-reduced-motion` skips straight to the assembled logo with a static
+  floor, no scroll rail, no crowd sway/flicker, no clap animation.
 - A "Skip intro" control fast-forwards the choreography.
 - If WebGL is unavailable, a static typographic hero renders instead.
 
@@ -42,7 +70,10 @@ real photos instead, fill the `LETTER_IMAGES` array at the top of
 - [anime.js v4](https://animejs.com) — drives the whole assembly timeline
   (mesh transforms, material opacity, light state, shader uniforms, DOM chrome)
 - [three.js](https://threejs.org) — extruded letter meshes (`TextGeometry`,
-  Helvetiker Bold), stage lighting, ripple-floor `ShaderMaterial`, dust
+  Helvetiker Bold), stage lighting, ripple-floor `ShaderMaterial`, dust,
+  crowd, curtains, projector wall, spotlight
+- [GSAP](https://gsap.com) `ScrollTrigger` — scrubs the camera along the
+  scroll-film rail
 
 ## Run
 

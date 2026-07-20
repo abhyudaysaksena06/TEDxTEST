@@ -9,6 +9,12 @@ const TED_RED = 0xeb0028
 const FINAL_CAM_Z = 10.6
 const LOGO_Z = -3 // the word stands behind the carpet, like the reference
 const FLOOR_Y = -1.74
+
+// Optional programmed media for the projector wall. Set to
+// { type: 'video', src: '/media/screen-loop.mp4' } or
+// { type: 'image', src: '/media/poster.webp' } once the asset exists in
+// /public/media — the router falls back to the idle watermark on error.
+const SCREEN_MEDIA = null
 const LETTER_DEPTH = 0.24
 const TRACKING = 0.09
 
@@ -63,6 +69,38 @@ export class HeroScene {
 
     this.tmpA = new THREE.Vector3()
     this.tmpB = new THREE.Vector3()
+    this.tmpC = new THREE.Vector3()
+    this.tmpD = new THREE.Vector3()
+
+    // The scroll film: a camera rail through the theater with a matched
+    // lookAt curve (never interpolate rotations — drive the gaze point).
+    // 0% wide house shot → 35% aisle descent → 65% stage-left hero shot
+    // of the letters → 100% locked into the projection wall.
+    this.scrollP = 0
+    this.camRail = new THREE.CatmullRomCurve3(
+      [
+        new THREE.Vector3(1.2, 1.5, 10.6),
+        new THREE.Vector3(0.3, 0.35, 7.4),
+        new THREE.Vector3(-6.4, -0.55, 5.6),
+        new THREE.Vector3(-2.4, 1.7, 3.6),
+        new THREE.Vector3(0.3, 2.6, 1.4),
+      ],
+      false,
+      'catmullrom',
+      0.2,
+    )
+    this.lookRail = new THREE.CatmullRomCurve3(
+      [
+        new THREE.Vector3(0, -0.45, 0),
+        new THREE.Vector3(0, -0.95, 0.4),
+        new THREE.Vector3(-3.3, -0.9, -3),
+        new THREE.Vector3(0, 2.2, -14),
+        new THREE.Vector3(0.2, 2.7, -14.5),
+      ],
+      false,
+      'catmullrom',
+      0.2,
+    )
 
     this.#buildLights()
     this.#buildLogo()
@@ -76,6 +114,7 @@ export class HeroScene {
     this.#buildDust()
 
     this.resize()
+    if (SCREEN_MEDIA) this.setScreenMedia(SCREEN_MEDIA)
     this.renderer.setAnimationLoop(() => this.#tick())
   }
 
@@ -1098,6 +1137,7 @@ export class HeroScene {
     const CARPET = { x: 0, z: 0.9 } // everyone watches the speaker's spot
 
     this.crowd = []
+    this.crowdMeshes = []
     const group = new THREE.Group()
     rows.forEach((row) => {
       const rowPoint = (u) => [
@@ -1148,7 +1188,24 @@ export class HeroScene {
         // seated facing the speaker's spot on the carpet
         person.rotation.y = Math.atan2(CARPET.x - x, CARPET.z - rowZ) + (rnd() - 0.5) * 0.1
         group.add(person)
-        this.crowd.push({ person, baseY, phase: rnd() * Math.PI * 2, amp: 0.005 + rnd() * 0.009 })
+        const index = this.crowd.length
+        person.traverse((o) => {
+          if (o.isMesh) {
+            o.userData.personIndex = index
+            this.crowdMeshes.push(o)
+          }
+        })
+        this.crowd.push({
+          person,
+          baseY,
+          x,
+          z: rowZ,
+          phase: rnd() * Math.PI * 2,
+          amp: 0.005 + rnd() * 0.009,
+          standT: 0,
+          holdUntil: 0,
+          cooldownUntil: 0,
+        })
       }
     })
     this.scene.add(group)
@@ -1159,9 +1216,10 @@ export class HeroScene {
     // pointer lands on the stage, with a visible beam and light pool.
     this.spotSource = new THREE.Vector3(0, 9.5, 8.5)
 
-    this.spot = new THREE.SpotLight(0xfff1dd, 0)
-    this.spot.angle = 0.42
-    this.spot.penumbra = 0.75
+    // spec-aligned followspot: tight cone, soft penumbra, rafter-mounted
+    this.spot = new THREE.SpotLight(0xffffff, 0)
+    this.spot.angle = 0.3
+    this.spot.penumbra = 0.6
     this.spot.distance = 45
     this.spot.decay = 0
     this.spot.position.copy(this.spotSource)
@@ -1212,6 +1270,65 @@ export class HeroScene {
     })
     this.dust = new THREE.Points(geometry, this.dustMat)
     this.scene.add(this.dust)
+  }
+
+  // ————— media router —————
+  // Dual-input display subsystem for the projection wall: images or an
+  // HTML5 video feed, with explicit disposal of the previous texture on
+  // every switch so VRAM stays flat. Hover slides yield to programmed
+  // media; clearing returns to hover-driven + idle behavior.
+
+  setScreenMedia(media) {
+    this.#clearScreenMedia()
+    if (!media || media.type === 'idle') return
+
+    const apply = (texture) => {
+      if (this.disposed) return
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.wrapS = THREE.ClampToEdgeWrapping
+      texture.repeat.x = -1 // un-mirror for the inside of the cylinder
+      texture.offset.x = 1
+      this.mediaTexture = texture
+      this.screenImageMat.map = texture
+      this.screenImageMat.needsUpdate = true
+      this.mediaOverride = media
+    }
+
+    if (media.type === 'image') {
+      new THREE.TextureLoader().load(media.src, apply, undefined, () => this.#clearScreenMedia())
+    } else if (media.type === 'video') {
+      const video = document.createElement('video')
+      video.muted = true
+      video.loop = true
+      video.playsInline = true
+      video.crossOrigin = 'anonymous'
+      video.src = media.src
+      video.addEventListener('canplay', () => {
+        video.play().catch(() => {})
+        apply(new THREE.VideoTexture(video))
+      }, { once: true })
+      video.addEventListener('error', () => this.#clearScreenMedia(), { once: true })
+      this.mediaVideo = video
+    }
+  }
+
+  #clearScreenMedia() {
+    if (this.mediaVideo) {
+      this.mediaVideo.pause()
+      this.mediaVideo.removeAttribute('src')
+      this.mediaVideo.load()
+      this.mediaVideo = null
+    }
+    if (this.mediaTexture) {
+      if (this.screenImageMat.map === this.mediaTexture) this.screenImageMat.map = null
+      this.mediaTexture.dispose()
+      this.mediaTexture = null
+    }
+    this.mediaOverride = null
+  }
+
+  setScrollProgress(p) {
+    this.scrollP = THREE.MathUtils.clamp(p, 0, 1)
   }
 
   // ————— interaction —————
@@ -1287,14 +1404,42 @@ export class HeroScene {
     })
 
     // sync the projector: the hovered letter's picture appears on the
-    // curved screen behind the stage
-    if (lit >= 0 && lit !== this.litIndex) {
+    // curved screen behind the stage — unless programmed media owns it
+    if (!this.mediaOverride && lit >= 0 && lit !== this.litIndex) {
       this.screenImageMat.map = this.screenSlides[lit]
       this.screenImageMat.needsUpdate = true
     }
     this.litIndex = lit
-    const fadeTarget = lit >= 0 ? 1 : 0
+    const fadeTarget = this.mediaOverride ? 1 : lit >= 0 ? 1 : 0
     this.screenFade += (fadeTarget - this.screenFade) * (this.reduced ? 1 : 0.1)
+  }
+
+  #updateCrowdInteraction(t) {
+    // The dual-condition trigger from the spec: a person reacts only when
+    // the pointer is on them AND the followspot is actually lighting them
+    // (spotlight-target distance under the illumination radius). Procedural
+    // stand-up-and-clap for now; swaps to Stand_Up_Clap skeletal tracks
+    // when the character GLBs land.
+    if (!this.assembled) return
+
+    let hit = -1
+    if (this.pointerMoved && this.hoverIndex < 0) {
+      const found = this.raycaster.intersectObjects(this.crowdMeshes, false)[0]
+      if (found) hit = found.object.userData.personIndex
+    }
+
+    const standing = this.crowd.reduce((n, c) => n + (c.standT > 0.4 ? 1 : 0), 0)
+    this.crowd.forEach((c, i) => {
+      const dx = this.spotTarget.position.x - c.x
+      const dz = this.spotTarget.position.z - c.z
+      const litBySpot = dx * dx + dz * dz < 3.2 * 3.2
+      if (i === hit && litBySpot && t > c.cooldownUntil && (standing < 2 || c.standT > 0.4)) {
+        c.holdUntil = t + 0.9
+      }
+      const target = t < c.holdUntil ? 1 : 0
+      if (target === 0 && c.standT > 0.5) c.cooldownUntil = Math.max(c.cooldownUntil, t + 2.5)
+      c.standT += (target - c.standT) * (this.reduced ? 1 : 0.09)
+    })
   }
 
   // ————— state —————
@@ -1367,7 +1512,10 @@ export class HeroScene {
     this.pointer.y += (this.pointer.ty - this.pointer.y) * this.tuning.follow
 
     const { state } = this
-    const idle = this.reduced ? 0 : state.idle
+    // scrolling the film hands the camera to the rail and quiets the
+    // pointer-driven motion so the two systems never fight
+    const railMix = Math.min(this.scrollP * 6, 1)
+    const idle = (this.reduced ? 0 : state.idle) * (1 - railMix)
 
     const bob = Math.sin(t * 0.55)
     const { tuning } = this
@@ -1394,16 +1542,23 @@ export class HeroScene {
     this.screenBaseMat.opacity = stage * tuning.screenGlow * (1 - this.screenFade * 0.75)
     this.screenImageMat.opacity = stage * tuning.screenGlow * this.screenFade
 
-    // curtains, decoration, and audience settle in with the stage
-    for (const m of this.curtainMats) m.opacity = stage * 0.96
+    // curtains, decoration, and audience settle in with the stage. The
+    // curtain wash flickers on the spec's harmonic oscillator:
+    // I(t) = I_base + A·sin(ω1·t)·cos(ω2·t), normalized to opacity.
+    const flicker = (12 + 2.0 * Math.sin(t * 0.4) * Math.cos(t * 0.15)) / 12
+    for (const m of this.curtainMats) m.opacity = stage * 0.96 * (this.reduced ? 1 : 0.93 + 0.07 * flicker)
     for (const m of this.decorMats) m.opacity = stage
-    for (const m of this.uplightMats) m.opacity = stage * (0.12 + 0.02 * Math.sin(t * 0.5))
+    for (const m of this.uplightMats) m.opacity = stage * 0.13 * (this.reduced ? 1 : flicker)
     for (const m of this.crowdMats) m.opacity = stage * 0.95
     this.benchMat.opacity = stage * 0.6
-    if (!this.reduced) {
-      for (const c of this.crowd) {
-        c.person.position.y = c.baseY + Math.sin(t * 0.7 + c.phase) * c.amp
-      }
+    this.#updateCrowdInteraction(t)
+    for (const c of this.crowd) {
+      const sway = this.reduced ? 0 : Math.sin(t * 0.7 + c.phase) * c.amp
+      // the clap: rise from the seat with an excited bounce
+      c.person.position.y = c.baseY + sway + 0.34 * c.standT
+      c.person.rotation.x = -0.12 * c.standT + (this.reduced ? 0 : Math.sin(t * 9 + c.phase) * 0.06 * c.standT)
+      const sc = 1 + 0.04 * c.standT
+      c.person.scale.set(sc, sc, sc)
     }
 
     // the cursor followspot: aim the light where the pointer lands
@@ -1418,13 +1573,23 @@ export class HeroScene {
     this.spot.intensity = 2.6 * spotStrength
     this.poolMat.opacity = 0.16 * spotStrength
 
-    // viewed from back-right of the house, with a slow cinematic drift
-    this.camera.position.set(
+    // viewed from back-right of the house with a slow cinematic drift at
+    // rest; under scroll the camera rides the rail with a matched gaze curve
+    this.tmpA.set(
       1.2 + this.pointer.x * 0.18 * idle + Math.sin(t * 0.11) * 0.2 * idle,
       state.camY + Math.sin(t * 0.14) * 0.07 * idle,
       state.camZ,
     )
-    this.camera.lookAt(0, -0.45, 0)
+    this.tmpC.set(0, -0.45, 0)
+    if (railMix > 0) {
+      const p = this.scrollP
+      this.camRail.getPoint(p, this.tmpB)
+      this.lookRail.getPoint(p, this.tmpD)
+      this.tmpA.lerp(this.tmpB, railMix)
+      this.tmpC.lerp(this.tmpD, railMix)
+    }
+    this.camera.position.copy(this.tmpA)
+    this.camera.lookAt(this.tmpC)
 
     this.keyLight.intensity = state.key
     this.rimLeft.intensity = state.rim
@@ -1448,6 +1613,7 @@ export class HeroScene {
 
   dispose() {
     this.disposed = true
+    this.#clearScreenMedia()
     this.renderer.setAnimationLoop(null)
     this.scene.traverse((obj) => {
       if (obj.geometry) obj.geometry.dispose()
