@@ -965,31 +965,45 @@ export class HeroScene {
   }
 
   #makeCurtainTexture() {
-    // dark stage drapes: vertical folds with faint warm side washes
+    // dark stage drapes: vertical folds with a dominant warm gold/amber
+    // rake-light wash (the reference's diagonal stage-wash bands), only a
+    // faint hint of red near the letters — the red comes from the carpet,
+    // ring and letters themselves, not the fabric
     const canvas = document.createElement('canvas')
     canvas.width = 1024
     canvas.height = 256
     const ctx = canvas.getContext('2d')
-    ctx.fillStyle = '#0b0a0a'
+    ctx.fillStyle = '#120c09' // warm near-black, not neutral black
     ctx.fillRect(0, 0, 1024, 256)
     for (let x = 0; x < 1024; x += 4) {
       const fold = Math.sin(x * 0.11) * 0.5 + Math.sin(x * 0.023) * 0.5
-      ctx.fillStyle = `rgba(255, 240, 225, ${Math.max(0, fold) * 0.045})`
+      ctx.fillStyle = `rgba(255, 225, 180, ${Math.max(0, fold) * 0.05})`
       ctx.fillRect(x, 0, 4, 256)
-      ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, -fold) * 0.35})`
+      ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, -fold) * 0.4})`
       ctx.fillRect(x, 0, 4, 256)
     }
-    // warm wash left, deep red wash right — like the reference lighting
-    const left = ctx.createLinearGradient(0, 0, 360, 0)
-    left.addColorStop(0, 'rgba(214, 110, 40, 0.16)')
-    left.addColorStop(1, 'rgba(214, 110, 40, 0)')
-    ctx.fillStyle = left
-    ctx.fillRect(0, 0, 360, 256)
-    const right = ctx.createLinearGradient(1024, 0, 660, 0)
-    right.addColorStop(0, 'rgba(235, 0, 40, 0.1)')
-    right.addColorStop(1, 'rgba(235, 0, 40, 0)')
-    ctx.fillStyle = right
-    ctx.fillRect(660, 0, 364, 256)
+    // diagonal gold rake-light bands, like stage wash crossing the drape
+    for (let i = 0; i < 5; i++) {
+      const bx = 120 + i * 210
+      const band = ctx.createLinearGradient(bx - 70, 0, bx + 70, 256)
+      band.addColorStop(0, 'rgba(219, 150, 60, 0)')
+      band.addColorStop(0.5, `rgba(219, 150, 60, ${0.16 - i * 0.012})`)
+      band.addColorStop(1, 'rgba(219, 150, 60, 0)')
+      ctx.fillStyle = band
+      ctx.fillRect(bx - 90, 0, 180, 256)
+    }
+    // a wide warm gold wash across most of the drape
+    const gold = ctx.createLinearGradient(0, 0, 900, 0)
+    gold.addColorStop(0, 'rgba(214, 130, 45, 0.2)')
+    gold.addColorStop(1, 'rgba(214, 130, 45, 0)')
+    ctx.fillStyle = gold
+    ctx.fillRect(0, 0, 900, 256)
+    // only a faint red hint near the letters' end
+    const red = ctx.createLinearGradient(1024, 0, 780, 0)
+    red.addColorStop(0, 'rgba(235, 0, 40, 0.06)')
+    red.addColorStop(1, 'rgba(235, 0, 40, 0)')
+    ctx.fillStyle = red
+    ctx.fillRect(780, 0, 244, 256)
 
     const texture = new THREE.CanvasTexture(canvas)
     texture.colorSpace = THREE.SRGBColorSpace
@@ -998,13 +1012,55 @@ export class HeroScene {
     return texture
   }
 
+  #makeSideWallTexture() {
+    // the architectural side wall behind the curtain legs: warm fluted
+    // stone/wood panels, lit gold from above — distinct from the dark
+    // drape fabric, matching the reference's textured side walls
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 512
+    const ctx = canvas.getContext('2d')
+    const base = ctx.createLinearGradient(0, 0, 0, 512)
+    base.addColorStop(0, '#5a4126')
+    base.addColorStop(0.45, '#3c2c1a')
+    base.addColorStop(1, '#17110a')
+    ctx.fillStyle = base
+    ctx.fillRect(0, 0, 512, 512)
+
+    // vertical fluting: alternating light/shadow columns
+    const cols = 22
+    const colW = 512 / cols
+    for (let i = 0; i < cols; i++) {
+      const x = i * colW
+      const flute = ctx.createLinearGradient(x, 0, x + colW, 0)
+      flute.addColorStop(0, 'rgba(0, 0, 0, 0.32)')
+      flute.addColorStop(0.5, 'rgba(255, 214, 160, 0.14)')
+      flute.addColorStop(1, 'rgba(0, 0, 0, 0.3)')
+      ctx.fillStyle = flute
+      ctx.fillRect(x, 0, colW, 512)
+    }
+    // a brighter gold catch-light band near the top, like the reference
+    const catchlight = ctx.createLinearGradient(0, 0, 0, 200)
+    catchlight.addColorStop(0, 'rgba(230, 160, 70, 0.28)')
+    catchlight.addColorStop(1, 'rgba(230, 160, 70, 0)')
+    ctx.fillStyle = catchlight
+    ctx.fillRect(0, 0, 512, 200)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.wrapS = THREE.RepeatWrapping
+    texture.repeat.x = 4
+    return texture
+  }
+
   #buildCurtains() {
     // the background behind the stage: a drape band under the screen and
-    // two tall curtain legs framing the sides
-    const texture = this.#makeCurtainTexture()
+    // two tall side walls framing it — fluted warm stone, not fabric
+    const drapeTexture = this.#makeCurtainTexture()
+    const wallTexture = this.#makeSideWallTexture()
     this.curtainMats = []
 
-    const makeCurtain = (radius, height, thetaStart, thetaLength, y) => {
+    const makeCurtain = (texture, radius, height, thetaStart, thetaLength, y) => {
       const material = new THREE.MeshBasicMaterial({
         map: texture,
         transparent: true,
@@ -1023,11 +1079,11 @@ export class HeroScene {
       return mesh
     }
 
-    // lower band from stage floor up to the screen's bottom edge, swept
-    // right with the screen; a strong warm leg closes the left of frame
-    makeCurtain(19.4, 3.3, Math.PI - 0.45 - 1.35, 2.7, FLOOR_Y + 1.6)
-    makeCurtain(19.1, 13, Math.PI - 0.45 - 1.62, 0.5, 4.6)
-    makeCurtain(19.1, 13, Math.PI - 0.45 + 1.18, 0.34, 4.6)
+    // lower drape band from stage floor up to the screen's bottom edge,
+    // swept right with the screen; warm fluted side walls frame it
+    makeCurtain(drapeTexture, 19.4, 3.3, Math.PI - 0.45 - 1.35, 2.7, FLOOR_Y + 1.6)
+    makeCurtain(wallTexture, 19.1, 13, Math.PI - 0.45 - 1.62, 0.5, 4.6)
+    makeCurtain(wallTexture, 19.1, 13, Math.PI - 0.45 + 1.18, 0.34, 4.6)
   }
 
   #buildDecor() {
@@ -1122,9 +1178,11 @@ export class HeroScene {
 
     // An organized house, like the reference: neat curved rows swept
     // diagonally from the lower-left, even seating pitch, everyone facing
-    // the carpet, with light sofa backs running behind each row.
+    // the carpet, with pale powder-blue sofa backs running behind each
+    // row — the reference's light seating reads clearly against the dark
+    // silhouetted crowd and the black pit floor.
     this.benchMat = new THREE.MeshBasicMaterial({
-      color: 0x151b28,
+      color: 0x9fb9cc,
       transparent: true,
       opacity: 0,
     })
@@ -1550,7 +1608,7 @@ export class HeroScene {
     for (const m of this.decorMats) m.opacity = stage
     for (const m of this.uplightMats) m.opacity = stage * 0.13 * (this.reduced ? 1 : flicker)
     for (const m of this.crowdMats) m.opacity = stage * 0.95
-    this.benchMat.opacity = stage * 0.6
+    this.benchMat.opacity = stage * 0.82
     this.#updateCrowdInteraction(t)
     for (const c of this.crowd) {
       const sway = this.reduced ? 0 : Math.sin(t * 0.7 + c.phase) * c.amp
