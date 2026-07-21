@@ -9,36 +9,31 @@ Five static character meshes for the theater audience:
 | `businesswoman.glb` | 421 KB |
 | `male-human.glb` | 426 KB |
 | `woman-business-outfit.glb` | 424 KB |
-| `stage-and-seating.glb` | 2.0 MB (compressed from 16.8 MB) |
+| `stage-and-seating.glb` | 4.6 MB (compressed from 16.8 MB) |
 
 The five character files are well under the ≤1.5 MB/character budget in
 `docs/ENGINEERING_PLAN.md` §1.2 — no compression needed.
 
-`stage-and-seating.glb` went through the plan's `gltf-transform optimize`
-pass:
+`stage-and-seating.glb` uses a **selective, per-mesh** compression pass
+(scratchpad script, gltf-transform SDK) that spends quality where it's seen
+and cuts hard where it isn't. The model has two meshes:
 
-```bash
-npx @gltf-transform/cli optimize stage-and-seating.glb stage-and-seating.glb \
-  --compress meshopt \
-  --texture-compress webp --texture-size 1024 \
-  --simplify true --simplify-ratio 0.06 --simplify-error 0.015
-```
+- **Seating bowl** (the amphitheater tiers, close to camera in the wide
+  hero shot): kept detailed — simplified 1.87M → ~410K triangles
+  (ratio 0.22, error 0.005), textures at 1280px WebP.
+- **Stage-back** (the far deck behind the letters, mostly occluded and
+  distant): cut aggressively — 1.72M → ~69K triangles (ratio 0.04,
+  error 0.02), textures at 640px WebP.
 
-- Textures: two 8192×8192 and four 4096×4096 JPEGs (was the real weight,
-  ~7.4 MB of the original 16.8 MB) → six 1024×1024 WebP textures (~380 KB
-  total).
-- Geometry: ~1.93 M triangles (Draco-compressed on export, still enormous
-  for a background prop viewed from a distance) → ~54K triangles via
-  meshoptimizer simplification, then meshopt-compressed. A more aggressive
-  ratio than the plan's default was used deliberately, since this asset sits
-  behind the ripple floor, letters, and vignette — not a close-up subject.
-- Verified after compression: loaded in a fresh three.js `GLTFLoader` +
-  `MeshoptDecoder` scene and rendered — stage deck, curtain drape folds, the
-  circular carpet cutout, and every curved seating row are still clearly
-  legible; no exploded or degenerate geometry.
+Both meshes are then meshopt-compressed. Textures overall: two 8192² and
+four 4096² JPEGs (~7.4 MB of the original) → WebP at the per-mesh sizes
+above. Verified after compression by loading in a fresh three.js
+`GLTFLoader` + `MeshoptDecoder` scene: the seating tiers, stage deck,
+curtain folds and carpet cutout all remain clean — the visible foreground
+seating keeps its finish, only the barely-seen back deck is heavily reduced.
 
-Total payload for all six models: **~4.7 MB**, comfortably under the plan's
-≤10 MB target (hard ceiling 15 MB).
+Total payload for all six models: **~6.7 MB**, under the plan's ≤10 MB
+target (hard ceiling 15 MB).
 
 **Verified (Phase 0 gate, §1.1):** each file has exactly one static mesh,
 **no skeleton, no animation tracks**. They are not rigged for

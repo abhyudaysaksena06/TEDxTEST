@@ -125,8 +125,9 @@ export function buildIntroTimeline(scene, chrome, onDone) {
   tl.add(scene.state, { rim: 2.6, duration: 260, ease: 'outQuad' }, popAt + 40)
   tl.add(scene.state, { rim: 1.1, duration: 900, ease: 'outQuad' }, popAt + 320)
 
-  // 4 — settle: camera eases back, idle life ramps in, chrome appears
-  tl.add(scene.state, { camZ: 10.6, duration: 1400, ease: 'outQuint' }, popAt + 170)
+  // 4 — settle: camera eases back to the wide establishing shot, idle life
+  // ramps in, chrome appears
+  tl.add(scene.state, { camZ: 16.5, duration: 1400, ease: 'outQuint' }, popAt + 170)
   tl.add(scene.state, { idle: 1, duration: 1000, ease: 'outQuad' }, popAt + 420)
   if (chromeEls.length) {
     tl.add(

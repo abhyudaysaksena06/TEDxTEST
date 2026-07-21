@@ -1,12 +1,20 @@
 import * as THREE from 'three'
 import { FontLoader } from 'three/addons/loaders/FontLoader.js'
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import helvetikerBold from 'three/examples/fonts/helvetiker_bold.typeface.json'
 import { createRippleFloor } from './rippleFloor.js'
 
 const WORD = 'TEDxTIET'
 const TED_RED = 0xeb0028
-const FINAL_CAM_Z = 10.6
+const FINAL_CAM_Z = 10.6 // scaling reference for the wordmark size
+// The resting camera sits back and up for a wide establishing shot so the
+// whole set — stage deck, carpet, seating and audience — reads in frame,
+// like the reference photo's elevated house view.
+const CAM_FINAL_Z = 16.5
+const CAM_FINAL_Y = 4.6
+const LOOK_AT_Y = -1.35
 const LOGO_Z = -3 // the word stands behind the carpet, like the reference
 const FLOOR_Y = -1.74
 
@@ -29,6 +37,20 @@ const LETTER_IMAGES = ['', '', '', '', '', '', '', '']
 // the things the event is made of, applied as layers of the title itself.
 const LAYER_THEMES = ['education', 'technology', 'design', 'tiet']
 
+// Real audience models (public/models/, see docs/ENGINEERING_PLAN.md §1).
+// Static meshes, no rig — scaled to human height and "sunk" below the seat
+// so only the torso-up shows, faking a seated pose without an animation.
+const CHARACTER_FILES = [
+  '/models/child.glb',
+  '/models/businessman.glb',
+  '/models/businesswoman.glb',
+  '/models/male-human.glb',
+  '/models/woman-business-outfit.glb',
+]
+const CHARACTER_TARGET_HEIGHT = [0.68, 1.0, 0.95, 1.02, 0.97] // world units, standing
+const SIT_SINK_FRACTION = 0.56 // fraction of standing height buried below the seat
+const STAGE_MODEL_URL = '/models/stage-and-seating.glb'
+
 export class HeroScene {
   constructor(canvas) {
     this.canvas = canvas
@@ -49,7 +71,7 @@ export class HeroScene {
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 60)
 
     // Values the anime.js timeline drives; the render loop reads them.
-    this.state = { camZ: 9, camY: 1.5, rim: 0, key: 0, idle: 0, stage: 0 }
+    this.state = { camZ: 14, camY: CAM_FINAL_Y, rim: 0, key: 0, idle: 0, stage: 0 }
 
     // Live-tunable effect intensities (the ?tune panel edits these).
     this.tuning = {
@@ -116,6 +138,112 @@ export class HeroScene {
     this.resize()
     if (SCREEN_MEDIA) this.setScreenMedia(SCREEN_MEDIA)
     this.renderer.setAnimationLoop(() => this.#tick())
+
+    this.pendingCharacterSwap = false
+    this.#loadRealModels()
+  }
+
+  // ————— real GLB models (public/models/) —————
+
+  #glbLoader() {
+    if (this._glbLoader) return this._glbLoader
+    const loader = new GLTFLoader()
+    loader.setMeshoptDecoder(MeshoptDecoder)
+    this._glbLoader = loader
+    return loader
+  }
+
+  async #loadRealModels() {
+    // Both load sets are independent and non-blocking: the procedural
+    // scene is already fully visible, these upgrade it in place once ready.
+    this.#loadCharacters().catch((err) => console.warn('character models failed to load', err))
+    this.#loadSeatingRiser().catch((err) => console.warn('stage/seating model failed to load', err))
+  }
+
+  async #loadCharacters() {
+    const loader = this.#glbLoader()
+    const templates = await Promise.all(
+      CHARACTER_FILES.map(
+        (url) =>
+          new Promise((resolve, reject) => {
+            loader.load(url, (gltf) => resolve(gltf.scene), undefined, reject)
+          }),
+      ),
+    )
+    this.characterTemplates = templates.map((root, i) => {
+      const box = new THREE.Box3().setFromObject(root)
+      const rawHeight = Math.max(box.max.y - box.min.y, 0.001)
+      const scale = CHARACTER_TARGET_HEIGHT[i] / rawHeight
+      return { root, scale, height: CHARACTER_TARGET_HEIGHT[i] }
+    })
+    this.pendingCharacterSwap = true // applied on the next tick once assembled
+  }
+
+  #swapCrowdToCharacters() {
+    const templates = this.characterTemplates
+    if (!templates || !this.crowd) return
+    this.crowdMeshes = []
+    this.crowd.forEach((c, i) => {
+      const t = templates[i % templates.length]
+      const instance = t.root.clone(true)
+      instance.scale.setScalar(t.scale)
+      instance.position.y = -t.height * SIT_SINK_FRACTION // sink to fake seated
+      // the reference's audience is dark, screen-lit silhouettes — reuse the
+      // crowd palette materials so the real human shapes keep the same tone,
+      // fade-in behavior, and don't read as white clay statues
+      const material = this.crowdMats[i % this.crowdMats.length]
+      instance.traverse((o) => {
+        if (o.isMesh) {
+          o.material = material
+          o.userData.personIndex = i
+          o.castShadow = false
+          o.receiveShadow = false
+          this.crowdMeshes.push(o)
+        }
+      })
+      c.person.clear()
+      c.person.add(instance)
+      // the character models face +Z by default and the seat-facing yaw
+      // formula already assumes +Z-forward, so no flip is needed
+    })
+  }
+
+  async #loadSeatingRiser() {
+    const loader = this.#glbLoader()
+    const gltf = await new Promise((resolve, reject) => {
+      loader.load(STAGE_MODEL_URL, resolve, undefined, reject)
+    })
+    const seatingNode = gltf.scene.children.find((c) => c.name.includes('933d99cd'))
+    if (!seatingNode) return
+
+    seatingNode.traverse((o) => {
+      if (o.isMesh) {
+        o.material = o.material.clone()
+        o.material.transparent = true
+        o.material.opacity = 0
+        o.material.fog = false
+        this.riserMats ??= []
+        this.riserMats.push(o.material)
+      }
+    })
+
+    // scale the amphitheater to wrap the whole audience area, centered under
+    // and around the seated crowd so its tiers read as the real seating
+    const box = new THREE.Box3().setFromObject(seatingNode)
+    const size = box.getSize(new THREE.Vector3())
+    const center = box.getCenter(new THREE.Vector3())
+    const targetWidth = 30
+    const scale = targetWidth / Math.max(size.x, size.z)
+
+    const rig = new THREE.Group()
+    rig.add(seatingNode)
+    seatingNode.position.sub(center) // recenter the node on its own origin
+    rig.scale.setScalar(scale)
+    rig.position.set(-3.0, FLOOR_Y - 0.7, 6.0)
+    rig.rotation.y = Math.PI - 0.45
+
+    this.scene.add(rig)
+    this.riserFade = 0
   }
 
   // ————— construction —————
@@ -1187,10 +1315,11 @@ export class HeroScene {
       opacity: 0,
     })
     const rows = [
+      // benches off: the real GLB amphitheater now provides the seating
       { from: [-9.2, 6.2], to: [3.8, 4.6], count: 12, baseY: -1.5, bow: 0.55, bench: false },
-      { from: [-9.9, 5.2], to: [3.0, 3.9], count: 11, baseY: -1.58, bow: 0.45, bench: true },
-      { from: [-10.4, 4.4], to: [2.0, 3.5], count: 9, baseY: -1.66, bow: 0.35, bench: true },
-      { from: [-11.0, 3.9], to: [-5.2, 3.3], count: 5, baseY: -1.32, bow: 0.1, bench: true }, // raised left bank
+      { from: [-9.9, 5.2], to: [3.0, 3.9], count: 11, baseY: -1.58, bow: 0.45, bench: false },
+      { from: [-10.4, 4.4], to: [2.0, 3.5], count: 9, baseY: -1.66, bow: 0.35, bench: false },
+      { from: [-11.0, 3.9], to: [-5.2, 3.3], count: 5, baseY: -1.32, bow: 0.1, bench: false }, // raised left bank
     ]
     const CARPET = { x: 0, z: 0.9 } // everyone watches the speaker's spot
 
@@ -1513,7 +1642,8 @@ export class HeroScene {
     for (const r of this.rawLetters) r.material.opacity = 0
     this.state.rim = 1.1
     this.state.key = 2.4
-    this.state.camZ = FINAL_CAM_Z
+    this.state.camZ = CAM_FINAL_Z
+    this.state.camY = CAM_FINAL_Y
     this.state.idle = 1
     this.state.stage = 1
     this.floor.uniforms.uFade.value = 1
@@ -1609,6 +1739,19 @@ export class HeroScene {
     for (const m of this.uplightMats) m.opacity = stage * 0.13 * (this.reduced ? 1 : flicker)
     for (const m of this.crowdMats) m.opacity = stage * 0.95
     this.benchMat.opacity = stage * 0.82
+
+    // once the real character models are loaded, swap them in after the
+    // intro finishes so the peel/extrude choreography never has to worry
+    // about mid-flight geometry changes
+    if (this.pendingCharacterSwap && this.assembled) {
+      this.#swapCrowdToCharacters()
+      this.pendingCharacterSwap = false
+    }
+    if (this.riserMats) {
+      this.riserFade += ((this.assembled ? 1 : 0) - this.riserFade) * (this.reduced ? 1 : 0.05)
+      for (const m of this.riserMats) m.opacity = stage * 0.92 * this.riserFade
+    }
+
     this.#updateCrowdInteraction(t)
     for (const c of this.crowd) {
       const sway = this.reduced ? 0 : Math.sin(t * 0.7 + c.phase) * c.amp
@@ -1638,7 +1781,7 @@ export class HeroScene {
       state.camY + Math.sin(t * 0.14) * 0.07 * idle,
       state.camZ,
     )
-    this.tmpC.set(0, -0.45, 0)
+    this.tmpC.set(0, LOOK_AT_Y, 0)
     if (railMix > 0) {
       const p = this.scrollP
       this.camRail.getPoint(p, this.tmpB)
@@ -1673,11 +1816,18 @@ export class HeroScene {
     this.disposed = true
     this.#clearScreenMedia()
     this.renderer.setAnimationLoop(null)
+    const TEXTURE_SLOTS = [
+      'map', 'normalMap', 'roughnessMap', 'metalnessMap',
+      'emissiveMap', 'aoMap', 'alphaMap', 'bumpMap',
+    ]
     this.scene.traverse((obj) => {
       if (obj.geometry) obj.geometry.dispose()
       if (obj.material) {
-        if (obj.material.map) obj.material.map.dispose()
-        obj.material.dispose()
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
+        for (const mat of materials) {
+          for (const slot of TEXTURE_SLOTS) mat[slot]?.dispose()
+          mat.dispose()
+        }
       }
     })
     this.renderer.dispose()
